@@ -89,8 +89,17 @@ function drawHUD() {
     ctx.textAlign = 'center';
     const winner = p1.hp > p2.hp ? p1.name : p2.hp > p1.hp ? p2.name : 'DRAW';
     ctx.fillText(winner === 'DRAW' ? 'DRAW!' : winner + ' WINS!', canvas.width/2, canvas.height/2);
-    ctx.font = '16px monospace';
-    ctx.fillText('Next round starting...', canvas.width/2, canvas.height/2 + 40);
+    if (roundOverTimer <= 0) {
+      ctx.font = 'bold 18px monospace';
+      ctx.fillStyle = '#ffd54a';
+      ctx.fillText('1  —  REMATCH', canvas.width/2, canvas.height/2 + 44);
+      ctx.fillStyle = '#7c4dff';
+      ctx.fillText('2  —  CHARACTER SELECT', canvas.width/2, canvas.height/2 + 76);
+    } else {
+      ctx.font = '16px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.fillText('get ready...', canvas.width/2, canvas.height/2 + 40);
+    }
   }
 }
 
@@ -202,8 +211,10 @@ function loop() {
   } else {
     p1.stateTimer++;
     p2.stateTimer++;
-    roundOverTimer--;
-    if (roundOverTimer <= 0) resetRound();
+    if (roundOverTimer > 0) roundOverTimer--;
+    // once the grace period ends, the rematch/character-select prompt (drawn in
+    // drawHUD) waits for the player to pick -- see the Digit1/Digit2 handling in
+    // input.js -- instead of auto-continuing like it used to.
   }
 
   drawStage();

@@ -44,5 +44,17 @@ window.addEventListener('keydown', e => {
     }
     return;
   }
+  // rematch / character-select prompt, shown once the post-round grace period ends
+  // (see checkRoundEnd() and the roundOver block in drawHUD())
+  if (roundOver && roundOverTimer <= 0) {
+    if (e.code === 'Digit1') {
+      resetRound();
+    } else if (e.code === 'Digit2') {
+      roundOver = false;
+      p1.wins = 0; p2.wins = 0;
+      characterSelectActive = true; csPhase = 'p1'; csCursor = 0;
+    }
+    return;
+  }
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });

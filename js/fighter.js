@@ -23,6 +23,10 @@ const ANIM_FOLDER = {
   lightAtk: 'light-punch', heavyAtk: 'heavy-punch',
   crouchLightAtk: 'crouch-light', crouchHeavyAtk: 'crouch-heavy',
   special: 'special', knockdown: 'defeat', victory: 'victory',
+  // victory2/3/4: alternate victory-pose variants, randomly picked between at round
+  // win (see startState()) -- only characters with more than one variant declare
+  // these in CHAR_ANIMS; everyone else just has 'victory'.
+  victory2: 'victory2', victory3: 'victory3', victory4: 'victory4',
   block: 'block', hitstun: 'hitstun',
 };
 
@@ -79,19 +83,21 @@ const CHAR_ANIMS = {
   // Full moveset. A steampunk gladiator-android -- light/heavy attacks are an
   // arm-mounted cannon rather than a punch, and the special summons a ghostly
   // historical/philosophical figure who hands him a stone tablet to smash. His
-  // `victory` is 4 source sheets (8 frames each) concatenated into one 32-frame
-  // sequence rather than picked from -- each sheet is the same choreography with a
-  // different figure appearing in the smoke, and getVictoryFrameIndex() doesn't care
-  // how long an animation is, so nothing stopped playing all of them as one longer
-  // celebration instead of discarding three of the four. That whole victory batch
-  // needed its own scale correction relative to idle (~1.65x) -- see the note above
-  // the victory export in _tools/export_phi.html. His special has no hand-tuned
-  // hitbox/dash choreography yet -- borrows White Noise's, like the others.
+  // victory has 4 variants (`victory`/`victory2`/`victory3`/`victory4`) from 4
+  // user-supplied sheets that are the same choreography with a different figure
+  // appearing in the smoke each time -- one is picked at random on each round win
+  // (see startState()) rather than always playing the same one or concatenating all
+  // 4 into one animation (an earlier approach here that made him visibly change
+  // scale mid-celebration whenever playback crossed from one source sheet's frames
+  // into the next, since each sheet's own internal scale wasn't independently
+  // verified against the others closely enough -- see the README note on this).
+  // His special has no hand-tuned hitbox/dash choreography yet -- borrows White
+  // Noise's, like the others.
   phi: {
     idle: 5, walk: 8, crouch: 3, jumpNeutral: 5, jumpForward: 5,
     jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
     crouchLightAtk: 5, crouchHeavyAtk: 5, special: 8, knockdown: 5,
-    victory: 32, block: 4, hitstun: 4,
+    victory: 8, victory2: 8, victory3: 8, victory4: 8, block: 4, hitstun: 4,
   },
 };
 
@@ -100,14 +106,23 @@ const SPECIAL_BOUNDARIES = {
   seth: [8,16,26,32,40,50,58,66,72],
   liberty: [8,16,26,33,40,46,53,61,68,75,84,92,98],
 };
-const SPECIAL_DUR = { seth: 72, liberty: 98 };
+// P.H.I.'s special was reported as "passing too quickly" -- literally duplicating his
+// 8 special frames wouldn't fix that on its own, since getSpecialFrameIndex() ->
+// getProgressFrame() maps the *whole* SPECIAL_DUR evenly across however many frames
+// exist (progress = stateTimer/stateDur), so doubling the frame count without also
+// raising stateDur just holds each of twice-as-many identical frames for half as long
+// -- net zero change in how long anything appears on screen. Raising his own SPECIAL_DUR
+// is what actually slows it down; see the matching `phi` branch in attackHitbox() below,
+// which had to move its hit window out to match or the impact would land during an
+// earlier, now-mistimed pose once the whole animation takes longer to play out.
+const SPECIAL_DUR = { seth: 72, liberty: 98, phi: 144 };
 // Every character is rendered at a fixed 180px sprite height by default, but that
 // only lines characters up visually when their art fills a similar fraction of its
 // own 500x720 canvas. White Noise's compact hoodie-and-hood silhouette leaves more
 // empty headroom above him than Liberty Belle's flowing hair or Botanist's leaf
 // cloak do, so he renders noticeably shorter than the other two at the same 180px
 // unless corrected here. Tune per-character, not by touching the art.
-const CHAR_HEIGHT_SCALE = { seth: 1.165, ladyvoix: 0.73 };
+const CHAR_HEIGHT_SCALE = { seth: 1.165, ladyvoix: 0.73, phi: 0.767 };
 // Bumps every fighter's render size on a specific stage. Needed because a stage's front
 // layer has a hard floor on how small it can be drawn (it must still cover the canvas
 // width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
@@ -116,7 +131,7 @@ const CHAR_HEIGHT_SCALE = { seth: 1.165, ladyvoix: 0.73 };
 // piano (an object whose real-world height is well known) rather than guessed by eye --
 // see the note on the piano-based calibration in stages.js above BAYOU_BAND_SCALE_K,
 // which uses the same reference.
-const STAGE_HEIGHT_SCALE = { bayou: 1.6 };
+const STAGE_HEIGHT_SCALE = { bayou: 1.8 };
 // Which crouch frame is the settled "deepest" pose to hold on -- most characters hold
 // on their last frame, but seth's and liberty's crouch sheets are ordered differently.
 const CROUCH_HOLD_AT = { seth: 1, liberty: 2, phi: 1 };
@@ -154,7 +169,7 @@ const SIMPLE_STATE_ANIM = {
   crouchHeavyAtk: { anim: 'crouchHeavyAtk', frame: f => f.getProgressFrame('crouchHeavyAtk') },
   special:        { anim: 'special',        frame: f => f.getSpecialFrameIndex() },
   knockdown:      { anim: 'knockdown',      frame: f => f.getKnockdownFrameIndex() },
-  victory:        { anim: 'victory',        frame: f => f.getVictoryFrameIndex() },
+  victory:        { anim: f => f.victoryVariant, frame: f => f.getVictoryFrameIndex() },
   hitstun:        { anim: 'hitstun',        frame: f => f.getProgressFrame('hitstun') },
   block:          { anim: 'block',          frame: f => f.getBlockFrameIndex() },
 };
@@ -205,6 +220,7 @@ class Fighter {
     this.comboCount = 0;
     this.comboTimer = 0;
     this.wins = 0;
+    this.victoryVariant = 'victory'; // which victory sub-animation is playing -- see startState()
   }
 
   // Multiplier for anything that must visually track the drawn sprite (hitboxes,
@@ -247,6 +263,13 @@ class Fighter {
         }
         return null;
       }
+      if (this.spriteKey === 'phi') {
+        // his special takes twice as long to play out as the shared default (see
+        // SPECIAL_DUR.phi) so the tablet-smash impact -- frame 5 of his 8 -- now
+        // lands around tick 90-108 instead of the default window's 30-50
+        if (this.stateTimer < 90 || this.stateTimer > 108) return null;
+        return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: 20, kb: 20 };
+      }
       // active from the tail of the windup through the impact frame
       if (this.stateTimer < 30 || this.stateTimer > 50) return null;
       return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: 20, kb: 20 };
@@ -267,6 +290,13 @@ class Fighter {
 
   startState(s, dur) {
     this.state = s; this.stateTimer = 0; this.stateDur = dur; this.hitLock = false;
+    if (s === 'victory') {
+      // pick one victory variant at random each win, for characters that have more
+      // than one (see the note on P.H.I.'s victory in CHAR_ANIMS) -- characters with
+      // only a plain 'victory' just always get that one back.
+      const variants = ['victory', 'victory2', 'victory3', 'victory4'].filter(v => this.anim(v));
+      this.victoryVariant = variants[Math.floor(Math.random() * variants.length)];
+    }
   }
 
   update(dt, opponent) {
@@ -309,7 +339,20 @@ class Fighter {
         }
 
         if (keys[c.jump] && grounded) {
-          this.vy = -13.5;
+          const s = this.displayScale();
+          this.vy = -13.5 * s;
+          // A character rendered near canvas-height-tall (the bayou's 1.8x display
+          // scale leaves a standing fighter with well under 100px of headroom above
+          // their own head) can't fit a fully proportional jump arc on screen at
+          // all -- even the *original*, completely unscaled jump height would push
+          // their head off the top of the canvas. Clamp the impulse (and therefore
+          // the scaled gravity below it) to whatever arc still leaves a small margin
+          // above the canvas top, so the jump scales up as much as geometrically
+          // possible instead of scaling exactly with displayScale() and clipping.
+          const drawH = 180 * s;
+          const maxRise = Math.max(60, GROUND_Y - 10 - drawH);
+          const maxVy = -Math.sqrt(2 * (0.63 * s) * maxRise);
+          this.vy = Math.max(this.vy, maxVy); // vy is negative; smaller magnitude wins
           this.jumpDirectional = moveDir !== 0;
           this.airAttack = null;
           this.airAttackUsed = false;
@@ -359,9 +402,13 @@ class Fighter {
       if (this.airAttackTimer > 20) this.airAttack = null; // animation finished; normal jump pose resumes for the rest of the arc
     }
 
-    // airborne physics
+    // airborne physics -- gravity scales with displayScale() too, alongside the jump
+    // impulse above, so a bigger-rendered fighter (CHAR_HEIGHT_SCALE or a stage's
+    // STAGE_HEIGHT_SCALE) jumps proportionately higher instead of the same absolute
+    // pixel height looking short relative to their now-bigger sprite. Scaling both by
+    // the same factor keeps hang time unchanged (only the height of the arc grows).
     if (this.state === 'jump' || this.y < GROUND_Y) {
-      this.vy += 0.63;
+      this.vy += 0.63 * this.displayScale();
       this.y += this.vy;
       if (this.y >= GROUND_Y) { this.y = GROUND_Y; this.vy = 0; if (this.state === 'jump') this.startState('idle'); }
     }
@@ -383,6 +430,10 @@ class Fighter {
         // sustained dash across the launch -> spin-kicks -> recover phases
         const dashing = this.stateTimer >= 26 && this.stateTimer < 75;
         this.vx = dashing ? this.facing * 4.5 : 0;
+      } else if (this.spriteKey === 'ladyvoix') {
+        // her mic-stand soundwave blast is stationary -- it radiates outward from
+        // where she's standing rather than closing distance like a melee special
+        this.vx = 0;
       } else {
         const dashing = this.stateTimer >= 26 && this.stateTimer < 40;
         this.vx = dashing ? this.facing * 14 : 0;
@@ -471,6 +522,13 @@ class Fighter {
     return !!(a && a.loaded >= a.count);
   }
 
+  // SIMPLE_STATE_ANIM entries can give `anim` as a plain string, or (for a state with
+  // multiple randomly-picked variants, like a multi-take victory pose) a function of
+  // the fighter that returns the variant name chosen in startState().
+  resolveAnimName(anim) {
+    return typeof anim === 'function' ? anim(this) : anim;
+  }
+
   drawSpriteFrame(ctx, img) {
     const drawH = 180 * (CHAR_HEIGHT_SCALE[this.spriteKey] || 1) * (STAGE_HEIGHT_SCALE[currentStage] || 1), drawW = drawH * (img.width / img.height);
     ctx.save();
@@ -506,7 +564,7 @@ class Fighter {
 
   getVictoryFrameIndex() {
     // charge-up spread over ~7 ticks/frame, holds on the final peak-charge frame after
-    const count = this.anim('victory').count;
+    const count = this.anim(this.victoryVariant).count;
     return Math.min(count - 1, Math.floor(this.stateTimer / 7));
   }
 
@@ -559,9 +617,10 @@ class Fighter {
         this.drawSpriteFrame(ctx, this.anim(animName).imgs[frameIdx]);
         drawn = true;
       }
-    } else if (this.hasSprite && SIMPLE_STATE_ANIM[this.state] && this.animReady(SIMPLE_STATE_ANIM[this.state].anim)) {
+    } else if (this.hasSprite && SIMPLE_STATE_ANIM[this.state] && this.animReady(this.resolveAnimName(SIMPLE_STATE_ANIM[this.state].anim))) {
       const cfg = SIMPLE_STATE_ANIM[this.state];
-      this.drawSpriteFrame(ctx, this.anim(cfg.anim).imgs[cfg.frame(this)]);
+      const animName = this.resolveAnimName(cfg.anim);
+      this.drawSpriteFrame(ctx, this.anim(animName).imgs[cfg.frame(this)]);
       drawn = true;
     }
 

@@ -44,6 +44,18 @@ function applyRosterChoice(fighter, choice) {
   fighter.name = choice.name;
   fighter.color = choice.color;
   fighter.accent = choice.accent;
+  // Every one of these is an index into the *previous* character's animation frame
+  // arrays -- left stale, a value that was in-bounds there (e.g. idleFrame=5 for
+  // Liberty's 6-frame idle) can be out-of-bounds for the new character's own frame
+  // count (Seth's idle is only 4 frames) for up to ~14 ticks, until that counter's own
+  // timer happens to roll over and re-clamp it via modulo. Reachable in practice once
+  // players can return to character select mid-session and pick someone with fewer
+  // frames in some animation than whoever they just played.
+  fighter.animFrame = 0; fighter.animTimer = 0;
+  fighter.idleFrame = 0; fighter.idleTimer = 0;
+  fighter.crouchFrame = 0; fighter.crouchTimer = 0; fighter.crouchAnimTimer = 0; fighter.crouchPhase = 'idle';
+  fighter.airAttack = null; fighter.airAttackTimer = 0; fighter.airAttackUsed = false;
+  fighter.victoryVariant = 'victory';
 }
 
 function drawCharacterSelect() {
@@ -102,23 +114,29 @@ function drawCharacterSelect() {
   const choice = ROSTER[csCursor];
   const onLeft = csPhase === 'p1';
   const previewX = onLeft ? 90 : canvas.width - 90;
-  const previewSpriteH = 210;
+  // Base preview height for every character; CHAR_HEIGHT_SCALE corrects it per-character
+  // the same way drawSpriteFrame() does in-game, anchored to a fixed floor line so
+  // characters don't all render at a visually mismatched height here just because the
+  // in-game correction never got applied to this preview.
+  const baseSpriteH = 210;
+  const floorY = canvas.height - 20;
   const idleAnim = SPRITES[choice.key] && SPRITES[choice.key].idle;
   const idleReady = !!(idleAnim && idleAnim.loaded >= idleAnim.count);
   if (idleReady) {
     const frame = csPreviewFrame % idleAnim.count;
     const img = idleAnim.imgs[frame];
+    const previewSpriteH = baseSpriteH * (CHAR_HEIGHT_SCALE[choice.key] || 1);
     const drawW = previewSpriteH * (img.width / img.height);
     ctx.save();
     if (!onLeft) { ctx.translate(previewX, 0); ctx.scale(-1, 1); ctx.translate(-previewX, 0); }
-    ctx.drawImage(img, previewX - drawW / 2, canvas.height - previewSpriteH - 20, drawW, previewSpriteH);
+    ctx.drawImage(img, previewX - drawW / 2, floorY - previewSpriteH, drawW, previewSpriteH);
     ctx.restore();
   }
   const nameLogo = choice.nameLogoImg;
   if (nameLogo && nameLogo.complete && nameLogo.naturalWidth > 0) {
     const logoH = 60;
     const logoW = logoH * (nameLogo.width / nameLogo.height);
-    const logoY = (canvas.height - previewSpriteH - 20) - logoH - 8;
+    const logoY = (canvas.height - baseSpriteH - 20) - logoH - 8;
     ctx.drawImage(nameLogo, previewX - logoW / 2, logoY, logoW, logoH);
   }
 

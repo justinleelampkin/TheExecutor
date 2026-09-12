@@ -90,14 +90,21 @@ const MEMORIAL_DRAW_Y = (GROUND_Y + 20) - (MEMORIAL_STAND_Y_SOURCE * MEMORIAL_FR
 // band/gators both rendering oversized. See the two lessons on scale drift and matching
 // pixel dimensions in README.md's asset-tooling notes before changing any of these.
 
-// Front layer: the lounge interior (piano, curtains, neon). BAYOU_FRONT_SCALE is kept at
-// the minimum that still covers the canvas width (1000/1672 would be the exact floor;
-// this leaves a small margin) -- going smaller would open a gap at the canvas edges, so
-// making the room look smaller relative to the fighters has to happen some other way
-// (see STAGE_HEIGHT_SCALE in fighter.js, which upscales fighters specifically on this
-// stage instead).
+// Front layer: the lounge interior (piano, curtains, neon). BAYOU_FRONT_SCALE has to
+// clear a higher floor than just "covers the canvas width at rest" (1000/1672≈0.598) --
+// drawStage()'s camera pan (camOffset*0.15) can shift this layer up to ~69px off-center
+// at extreme fighter positions, so the real floor has to add that pan range on both
+// sides: FRONT_DRAW_W >= 1000 + 2*69 = 1138, i.e. BAYOU_FRONT_SCALE >= 1138/1672≈0.681.
+// The original 0.61 was only checked against the static floor and left a real gap open
+// at the screen edge whenever both fighters pushed to one side -- with nothing clearing
+// the canvas between frames, that gap showed the *previous* frame's pixels rather than
+// black, which read as a smeared/ghosted edge rather than an obvious hole. Going smaller
+// than this floor to make the room look smaller relative to the fighters isn't an option;
+// that adjustment has to happen via STAGE_HEIGHT_SCALE in fighter.js instead, which
+// upscales fighters specifically on this stage (scaled up to match, below, since making
+// the room bigger here would otherwise make fighters look relatively smaller again).
 const BAYOU_FRONT_SRC_W = 1672, BAYOU_FRONT_SRC_H = 941;
-const BAYOU_FRONT_SCALE = 0.61;
+const BAYOU_FRONT_SCALE = 0.685;
 const BAYOU_FRONT_DRAW_W = BAYOU_FRONT_SRC_W * BAYOU_FRONT_SCALE;
 const BAYOU_FRONT_DRAW_H = BAYOU_FRONT_SRC_H * BAYOU_FRONT_SCALE;
 const bayouFrontImg = new Image();
@@ -179,6 +186,15 @@ function updateBayouAnim() {
 
 function drawStage() {
   stageTime++;
+  // Defensive base fill -- nothing here clears the canvas between frames otherwise, so
+  // if a layer's coverage math is ever off (a panning gap opening at an extreme camera
+  // offset, an image still loading, etc.), the gap would show the *previous* frame's
+  // pixels instead of a plain background, which reads as a smeared/ghosted edge rather
+  // than an obvious hole. See the note on BAYOU_FRONT_SCALE's pan-range floor below for
+  // a case that actually happened.
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
   // camera offset: shifts subtly as fighters spread apart or cluster, driving the parallax
   const midX = (p1.x + p2.x) / 2;
   const camOffset = (midX - STAGE_CENTER_X) * -1;

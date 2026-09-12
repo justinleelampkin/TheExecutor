@@ -44,7 +44,9 @@ function checkRoundEnd() {
   if (roundOver) return;
   if (p1.hp <= 0 || p2.hp <= 0 || roundTimer <= 0) {
     roundOver = true;
-    roundOverTimer = 180;
+    // brief grace period before the rematch/character-select prompt accepts input,
+    // so the winner announcement has a moment to register before anything's pressable
+    roundOverTimer = 45;
     if (p1.hp > p2.hp) { p1.wins++; p1.startState('victory', 999); }
     else if (p2.hp > p1.hp) { p2.wins++; p2.startState('victory', 999); }
   }
