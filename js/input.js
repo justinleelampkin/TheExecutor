@@ -28,6 +28,7 @@ window.addEventListener('keydown', e => {
           p2Choice = other;
           applyRosterChoice(p2, p2Choice);
           characterSelectActive = false;
+          currentStage = pickStageFor(p1Choice.key, p2Choice.key);
           resetRound();
         } else {
           csPhase = 'p2';
@@ -37,6 +38,7 @@ window.addEventListener('keydown', e => {
         p2Choice = ROSTER[csCursor];
         applyRosterChoice(p2, p2Choice);
         characterSelectActive = false;
+        currentStage = pickStageFor(p1Choice.key, p2Choice.key);
         resetRound();
       }
     }

@@ -52,6 +52,47 @@ const CHAR_ANIMS = {
     victory: 10, knockdown: 5, block: 3, crouchLightAtk: 5, crouchHeavyAtk: 5,
     hitstun: 3,
   },
+  // Full moveset. jumpForward reuses the same art as jumpNeutral -- there's no
+  // separate directional jump sheet for him, so both point at the same frames.
+  // His special also borrows White Noise's hitbox/dash choreography, same as
+  // Botanist's.
+  frontman: {
+    walk: 8, idle: 5, crouch: 3, lightAtk: 5, heavyAtk: 5,
+    jumpNeutral: 6, jumpForward: 6,
+    jumpLightAtk: 5, jumpHeavyAtk: 5, crouchLightAtk: 5, crouchHeavyAtk: 5,
+    special: 6, knockdown: 5, victory: 10, hitstun: 3, block: 3,
+  },
+  // Full moveset. Voice/sound-themed attacks (light/heavy punches emit a sonic burst,
+  // special is a mic-stand soundwave blast) fitting her "Lady Voix" name. jumpForward
+  // reuses the same single jump sheet as jumpNeutral, like Frontman. Her special has no
+  // hand-tuned hitbox/dash choreography yet -- borrows White Noise's, same as Botanist
+  // and Frontman. Several of her sheets (crouch, victory) needed their own scale
+  // correction relative to her idle sheet -- see the README note on scale drift, and the
+  // note above the crouch export in _tools/export_ladyvoix2.html for how the factor
+  // was derived (comparing each sheet's own standing-pose frame height against idle's).
+  ladyvoix: {
+    idle: 5, walk: 8, crouch: 4, jumpNeutral: 6, jumpForward: 6,
+    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
+    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 7, knockdown: 5,
+    victory: 10, block: 3, hitstun: 4,
+  },
+  // Full moveset. A steampunk gladiator-android -- light/heavy attacks are an
+  // arm-mounted cannon rather than a punch, and the special summons a ghostly
+  // historical/philosophical figure who hands him a stone tablet to smash. His
+  // `victory` is 4 source sheets (8 frames each) concatenated into one 32-frame
+  // sequence rather than picked from -- each sheet is the same choreography with a
+  // different figure appearing in the smoke, and getVictoryFrameIndex() doesn't care
+  // how long an animation is, so nothing stopped playing all of them as one longer
+  // celebration instead of discarding three of the four. That whole victory batch
+  // needed its own scale correction relative to idle (~1.65x) -- see the note above
+  // the victory export in _tools/export_phi.html. His special has no hand-tuned
+  // hitbox/dash choreography yet -- borrows White Noise's, like the others.
+  phi: {
+    idle: 5, walk: 8, crouch: 3, jumpNeutral: 5, jumpForward: 5,
+    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
+    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 8, knockdown: 5,
+    victory: 32, block: 4, hitstun: 4,
+  },
 };
 
 // Per-character tuning that isn't a plain frame count.
@@ -66,10 +107,19 @@ const SPECIAL_DUR = { seth: 72, liberty: 98 };
 // empty headroom above him than Liberty Belle's flowing hair or Botanist's leaf
 // cloak do, so he renders noticeably shorter than the other two at the same 180px
 // unless corrected here. Tune per-character, not by touching the art.
-const CHAR_HEIGHT_SCALE = { seth: 1.165 };
+const CHAR_HEIGHT_SCALE = { seth: 1.165, ladyvoix: 0.73 };
+// Bumps every fighter's render size on a specific stage. Needed because a stage's front
+// layer has a hard floor on how small it can be drawn (it must still cover the canvas
+// width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
+// can't always make fighters read as human-sized next to its furniture. The bayou's
+// 1.6 was derived by comparing a fighter's rendered height against the room's own grand
+// piano (an object whose real-world height is well known) rather than guessed by eye --
+// see the note on the piano-based calibration in stages.js above BAYOU_BAND_SCALE_K,
+// which uses the same reference.
+const STAGE_HEIGHT_SCALE = { bayou: 1.6 };
 // Which crouch frame is the settled "deepest" pose to hold on -- most characters hold
 // on their last frame, but seth's and liberty's crouch sheets are ordered differently.
-const CROUCH_HOLD_AT = { seth: 1, liberty: 2 };
+const CROUCH_HOLD_AT = { seth: 1, liberty: 2, phi: 1 };
 
 // Build SPRITES[charKey][animName] = { frames, imgs, count, loaded } for every
 // character/animation pair declared in CHAR_ANIMS. Adding a new character or a new
@@ -157,19 +207,30 @@ class Fighter {
     this.wins = 0;
   }
 
+  // Multiplier for anything that must visually track the drawn sprite (hitboxes,
+  // hurtbox, projectile spawn point) -- the same one drawSpriteFrame() uses, so a
+  // character rendered bigger on a given stage (STAGE_HEIGHT_SCALE) or bigger by their
+  // own CHAR_HEIGHT_SCALE correction also fights at that size, not at the fixed
+  // 70x150 base this.w/this.h describe.
+  displayScale() {
+    return (CHAR_HEIGHT_SCALE[this.spriteKey] || 1) * (STAGE_HEIGHT_SCALE[currentStage] || 1);
+  }
+
   get hurtbox() {
+    const s = this.displayScale();
     const crouch = this.state === 'crouch';
-    return { x: this.x - this.w/2, y: crouch ? this.y - this.h*0.55 : this.y - this.h, w: this.w, h: crouch ? this.h*0.55 : this.h };
+    return { x: this.x - (this.w*s)/2, y: crouch ? this.y - this.h*s*0.55 : this.y - this.h*s, w: this.w*s, h: crouch ? this.h*s*0.55 : this.h*s };
   }
 
   attackHitbox() {
+    const s = this.displayScale();
     if (this.state === 'jump' && this.airAttack) {
       // jump attacks: kick (heavy) hits harder than punch (light), matching the ground light/heavy split
       if (this.airAttackTimer < 7 || this.airAttackTimer > 13) return null;
       const isLight = this.airAttack === 'light'; // punch = weak
-      const range = isLight ? 60 : 78;
-      const hx = this.facing === 1 ? this.x + this.w/2 : this.x - this.w/2 - range;
-      return { x: hx, y: this.y - this.h*0.75, w: range, h: this.h*0.4, dmg: isLight ? 7 : 12, kb: isLight ? 8 : 15 };
+      const range = (isLight ? 60 : 78) * s;
+      const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
+      return { x: hx, y: this.y - this.h*s*0.75, w: range, h: this.h*s*0.4, dmg: isLight ? 7 : 12, kb: isLight ? 8 : 15 };
     }
     if (this.state === 'special') {
       if (this.spriteKey === 'liberty') {
@@ -181,14 +242,14 @@ class Fighter {
         ];
         for (const w of windows) {
           if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
-            return { x: this.x - this.w/2, y: this.y - this.h, w: this.w, h: this.h, dmg: w.dmg, kb: w.kb, hitId: w.id };
+            return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: w.dmg, kb: w.kb, hitId: w.id };
           }
         }
         return null;
       }
       // active from the tail of the windup through the impact frame
       if (this.stateTimer < 30 || this.stateTimer > 50) return null;
-      return { x: this.x - this.w/2, y: this.y - this.h, w: this.w, h: this.h, dmg: 20, kb: 20 };
+      return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: 20, kb: 20 };
     }
     if (!['lightAtk','heavyAtk','crouchLightAtk','crouchHeavyAtk'].includes(this.state)) return null;
     // active frames window
@@ -196,12 +257,12 @@ class Fighter {
     const activeStart = dur * 0.35, activeEnd = dur * 0.7;
     if (this.stateTimer < activeStart || this.stateTimer > activeEnd) return null;
     const isLight = this.state === 'lightAtk' || this.state === 'crouchLightAtk';
-    const range = isLight ? 55 : 75;
-    const hx = this.facing === 1 ? this.x + this.w/2 : this.x - this.w/2 - range;
+    const range = (isLight ? 55 : 75) * s;
+    const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
     // crouching attacks strike lower, matching the crouched fist height
     const isCrouching = this.state === 'crouchHeavyAtk' || this.state === 'crouchLightAtk';
-    const hy = isCrouching ? this.y - this.h*0.4 : this.y - this.h*0.65;
-    return { x: hx, y: hy, w: range, h: this.h*0.35, dmg: isLight ? 6 : 12, kb: isLight ? 6 : 14 };
+    const hy = isCrouching ? this.y - this.h*s*0.4 : this.y - this.h*s*0.65;
+    return { x: hx, y: hy, w: range, h: this.h*s*0.35, dmg: isLight ? 6 : 12, kb: isLight ? 6 : 14 };
   }
 
   startState(s, dur) {
@@ -374,8 +435,9 @@ class Fighter {
   }
 
   fireProjectile() {
+    const s = this.displayScale();
     this.projectiles.push({
-      x: this.x + this.facing * this.w, y: this.y - this.h*0.6, vx: this.facing * 9, w: 40, h: 20, dmg: 10
+      x: this.x + this.facing * this.w * s, y: this.y - this.h*s*0.6, vx: this.facing * 9, w: 40, h: 20, dmg: 10
     });
   }
 
@@ -410,7 +472,7 @@ class Fighter {
   }
 
   drawSpriteFrame(ctx, img) {
-    const drawH = 180 * (CHAR_HEIGHT_SCALE[this.spriteKey] || 1), drawW = drawH * (img.width / img.height);
+    const drawH = 180 * (CHAR_HEIGHT_SCALE[this.spriteKey] || 1) * (STAGE_HEIGHT_SCALE[currentStage] || 1), drawW = drawH * (img.width / img.height);
     ctx.save();
     if (this.facing === -1) {
       ctx.translate(this.x, 0); ctx.scale(-1,1); ctx.translate(-this.x, 0);
