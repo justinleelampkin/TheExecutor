@@ -1,0 +1,5 @@
+html, body { margin:0; padding:0; background:#0b0b0e; overflow:hidden; font-family: 'Courier New', monospace; }
+#wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+canvas { background:#1a1a22; image-rendering: pixelated; border: 2px solid #333; }
+#hint { color:#888; font-size:12px; margin-top:8px; text-align:center; line-height:1.6; }
+#hint b { color:#ccc; }
