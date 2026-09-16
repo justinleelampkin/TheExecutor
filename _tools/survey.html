@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>survey</title></head>
+<body style="background:#222;color:#0f0;font-family:monospace;white-space:pre-wrap;font-size:12px">
+<div id="out">scanning...</div>
+<script>
+const params = new URLSearchParams(location.search);
+const charDir = params.get('char');
+const dirs = params.get('dirs').split(',');
+const alphaThresh = parseInt(params.get('alphaThresh') || '20');
+const minArea = parseInt(params.get('minArea') || '150');
+
+function loadImg(src) {
+  return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = () => rej(new Error('load fail: '+src)); img.src = src; });
+}
+
+function analyze(imgData, w, h) {
+  const alpha = imgData.data;
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) mask[i] = alpha[i * 4 + 3] > alphaThresh ? 1 : 0;
+  const label = new Int32Array(w * h);
+  let cur = 0;
+  const islands = [];
+  const stack = [];
+  let minX=w, maxX=0, minY=h, maxY=0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (mask[idx] && !label[idx]) {
+        cur++;
+        stack.length = 0;
+        stack.push(idx);
+        label[idx] = cur;
+        let area = 0, iMinX=x, iMaxX=x, iMinY=y, iMaxY=y;
+        while (stack.length) {
+          const ci = stack.pop();
+          const cy = (ci / w) | 0, cx = ci % w;
+          area++;
+          if (cx < iMinX) iMinX = cx; if (cx > iMaxX) iMaxX = cx;
+          if (cy < iMinY) iMinY = cy; if (cy > iMaxY) iMaxY = cy;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+              const ni = ny * w + nx;
+              if (mask[ni] && !label[ni]) { label[ni] = cur; stack.push(ni); }
+            }
+          }
+        }
+        if (area >= minArea) {
+          islands.push({ area, minX: iMinX, maxX: iMaxX, minY: iMinY, maxY: iMaxY });
+          if (iMinX < minX) minX = iMinX; if (iMaxX > maxX) maxX = iMaxX;
+          if (iMinY < minY) minY = iMinY; if (iMaxY > maxY) maxY = iMaxY;
+        }
+      }
+    }
+  }
+  islands.sort((a,b) => b.area - a.area);
+  return { islands, minX, maxX, minY, maxY };
+}
+
+async function run() {
+  const lines = [];
+  for (const dir of dirs) {
+    const dirPath = `${charDir}/${dir}`;
+    let i = 0;
+    const frameLines = [];
+    while (true) {
+      const src = `${dirPath}/${i}.webp?t=${Date.now()}`;
+      let img;
+      try { img = await loadImg(src); } catch (e) { break; }
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, img.width, img.height);
+      const { islands, minX, maxX, minY, maxY } = analyze(data, img.width, img.height);
+      const contentW = maxX - minX, contentH = maxY - minY;
+      const fracH = (contentH / img.height).toFixed(3);
+      const fracW = (contentW / img.width).toFixed(3);
+      const touchesEdge = (minX <= 2 || maxX >= img.width-3) ? ' [TOUCHES-X-EDGE]' : '';
+      let flag = '';
+      if (islands.length > 1) {
+        const secondary = islands.slice(1).reduce((s,isl)=>s+isl.area,0);
+        flag = ` [${islands.length} ISLANDS, secondary area=${secondary}]`;
+      }
+      frameLines.push(`  ${i}: canvas=${img.width}x${img.height} bbox=[${minX},${minY},${maxX},${maxY}] fracH=${fracH} fracW=${fracW}${touchesEdge}${flag}`);
+      i++;
+    }
+    lines.push(`${dir} (${i} frames):`);
+    lines.push(...frameLines);
+    document.getElementById('out').textContent = lines.join('\n');
+  }
+  document.getElementById('out').textContent = lines.join('\n') + '\n\nDONE';
+}
+run();
+</script>
+</body></html>

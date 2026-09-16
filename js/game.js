@@ -188,7 +188,11 @@ function drawDifficultySelect() {
   ctx.fillText('press 1, 2, or 3', canvas.width / 2, 400);
 }
 
-const FRAME_MS = 1000 / 55;
+// Slowed from 55fps so attacks are easier to read -- every velocity/state-timer
+// constant in the game is expressed in pixels/ticks, not real time, so lowering
+// the tick rate slows the whole game uniformly without touching any of that.
+// (42 was tried and felt too slow; 48 splits the difference with the original 55.)
+const FRAME_MS = 1000 / 48;
 function scheduleNext() { setTimeout(loop, FRAME_MS); }
 
 function loop() {
