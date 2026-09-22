@@ -268,6 +268,7 @@ class Fighter {
     this.comboTimer = 0;
     this.wins = 0;
     this.victoryVariant = 'victory'; // which victory sub-animation is playing -- see startState()
+    this.footstepTimer = 0; // ticks since the last footstep sfx while walking
   }
 
   // Multiplier for anything that must visually track the drawn sprite (hitboxes,
@@ -450,16 +451,20 @@ class Fighter {
             this.startState('special', SPECIAL_DUR[this.spriteKey] || 72);
           } else if (keys[c.down]) {
             this.startState('crouchLightAtk', 16);
+            playWhiffSound();
           } else {
             this.startState('lightAtk', 18);
+            playWhiffSound();
           }
           this.inputBuf.length = 0;
         }
         if (keys[c.heavy] && !this._heavyHeld) {
           if (keys[c.down]) {
             this.startState('crouchHeavyAtk', 26);
+            playWhiffSound();
           } else {
             this.startState('heavyAtk', 26);
+            playWhiffSound();
           }
         }
       } else if (this.state === 'jump' && !this.airAttack && !this.airAttackUsed) {
@@ -469,11 +474,13 @@ class Fighter {
           this.airAttackTimer = 0;
           this.airAttackUsed = true;
           this.airAttackHitLock = false;
+          playWhiffSound();
         } else if (keys[c.heavy] && !this._heavyHeld) {
           this.airAttack = 'heavy';
           this.airAttackTimer = 0;
           this.airAttackUsed = true;
           this.airAttackHitLock = false;
+          playWhiffSound();
         }
       }
       this._lightHeld = keys[c.light];
@@ -493,7 +500,7 @@ class Fighter {
     if (this.state === 'jump' || this.y < GROUND_Y) {
       this.vy += 0.63 * this.displayScale();
       this.y += this.vy;
-      if (this.y >= GROUND_Y) { this.y = GROUND_Y; this.vy = 0; if (this.state === 'jump') this.startState('idle'); }
+      if (this.y >= GROUND_Y) { this.y = GROUND_Y; this.vy = 0; if (this.state === 'jump') { this.startState('idle'); playLandSound(); } }
     }
 
     // attack/special/hitstun/knockdown timers
@@ -553,6 +560,16 @@ class Fighter {
     // combo timer decay
     if (this.comboTimer > 0) { this.comboTimer--; if (this.comboTimer === 0) this.comboCount = 0; }
 
+    // footstep sfx: a fixed cadence rather than tied to exact animation frames
+    // (no per-frame foot-plant data to hook), reset on every state exit so a
+    // fresh walk always starts its first step from silence, not mid-cycle.
+    if (this.state === 'walk') {
+      this.footstepTimer++;
+      if (this.footstepTimer >= 16) { this.footstepTimer = 0; playFootstepSound(); }
+    } else {
+      this.footstepTimer = 0;
+    }
+
     // animation frame advance (only meaningful for sprite-based walk)
     this.animTimer++;
     const walkLen = this.anim('walk') ? this.anim('walk').count : 8;
@@ -590,6 +607,7 @@ class Fighter {
     this.meter = Math.min(this.maxMeter, this.meter + dmg * 0.5);
     if (this.hp === 0) {
       this.startState('knockdown', 60);
+      playKnockdownSound();
     } else {
       this.startState('hitstun', dmg > 8 ? 20 : 12);
     }

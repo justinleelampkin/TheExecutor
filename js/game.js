@@ -1,3 +1,12 @@
+// Slowed from 55fps so attacks are easier to read -- every velocity/state-timer
+// constant in the game is expressed in pixels/ticks, not real time, so lowering
+// the tick rate slows the whole game uniformly without touching any of that.
+// (42 was tried and felt too slow; 48 splits the difference with the original 55.)
+const FRAME_MS = 1000 / 48;
+// Round timer counts in ticks, not real seconds -- this converts so "99" on screen
+// still means 99 real seconds no matter what FRAME_MS is tuned to later.
+const TICKS_PER_SEC = 1000 / FRAME_MS;
+
 // ---------- Setup fighters ----------
 const p1 = new Fighter({
   name: 'SETH WARD', x: 260, facing: 1, color: '#2b2b33', accent: '#7c4dff', hasSprite: true, spriteKey: 'seth',
@@ -11,7 +20,7 @@ let vsCPU = false;
 let cpuDifficulty = 'medium';
 const p2CPU = new CPUController(p2, p1);
 
-let roundTimer = 99 * 60; // frames (60fps)
+let roundTimer = 99 * TICKS_PER_SEC; // ticks, not frames -- see TICKS_PER_SEC above
 let roundOver = false;
 // Brief freeze on a landed special hit -- highlights the impact without slowing the
 // move's own windup/recovery (which is what actually needs to stay fast to be usable).
@@ -78,7 +87,7 @@ function drawHUD() {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(Math.ceil(roundTimer/60), canvas.width/2, 42);
+  ctx.fillText(Math.ceil(roundTimer/TICKS_PER_SEC), canvas.width/2, 42);
 
   // wins
   ctx.font = '14px monospace';
@@ -188,11 +197,6 @@ function drawDifficultySelect() {
   ctx.fillText('press 1, 2, or 3', canvas.width / 2, 400);
 }
 
-// Slowed from 55fps so attacks are easier to read -- every velocity/state-timer
-// constant in the game is expressed in pixels/ticks, not real time, so lowering
-// the tick rate slows the whole game uniformly without touching any of that.
-// (42 was tried and felt too slow; 48 splits the difference with the original 55.)
-const FRAME_MS = 1000 / 48;
 function scheduleNext() { setTimeout(loop, FRAME_MS); }
 
 function loop() {
