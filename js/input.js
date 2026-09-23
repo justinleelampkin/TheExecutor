@@ -4,6 +4,11 @@ window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
   if (titleScreenActive) { titleScreenActive = false; modeSelectActive = true; return; }
+  // pause toggle -- lives outside every screen's own key handling below so it always
+  // works once past the title, including mid-match; freezes gameplay updates while
+  // still redrawing (see the `paused` branch in game.js's loop()) so a pose stays on
+  // screen for screenshotting sprite issues instead of the canvas going blank.
+  if (e.code === 'Space') { paused = !paused; return; }
   if (modeSelectActive) {
     if (e.code === 'Digit1') { playMenuConfirmSound(); vsCPU = true; modeSelectActive = false; difficultySelectActive = true; }
     else if (e.code === 'Digit2') { playMenuConfirmSound(); vsCPU = false; modeSelectActive = false; characterSelectActive = true; csPhase = 'p1'; csCursor = 0; playCharacterSelectMusic(); }
@@ -16,6 +21,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (characterSelectActive) {
+    if (csAwaitingVoice) return; // stalled on the just-confirmed pick's voice line -- see below
     const ctrl = csPhase === 'p1' ? p1.controls : p2.controls;
     if (e.code === ctrl.left) { csCursor = csNextUnlocked(csCursor, -1); playMenuMoveSound(); }
     else if (e.code === ctrl.right) { csCursor = csNextUnlocked(csCursor, 1); playMenuMoveSound(); }
@@ -24,25 +30,35 @@ window.addEventListener('keydown', e => {
       if (csPhase === 'p1') {
         p1Choice = ROSTER[csCursor];
         applyRosterChoice(p1, p1Choice);
-        playCharacterSelectVoice(p1);
-        if (vsCPU) {
-          const other = ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice;
-          p2Choice = other;
-          applyRosterChoice(p2, p2Choice);
-          characterSelectActive = false;
-          currentStage = pickStageFor(p1Choice.key, p2Choice.key);
-          resetRound();
-        } else {
-          csPhase = 'p2';
-          csCursor = 0;
-        }
+        const voice = playCharacterSelectVoice(p1);
+        const proceed = () => {
+          csAwaitingVoice = false;
+          if (vsCPU) {
+            const other = ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice;
+            p2Choice = other;
+            applyRosterChoice(p2, p2Choice);
+            characterSelectActive = false;
+            currentStage = pickStageFor(p1Choice.key, p2Choice.key);
+            resetRound();
+          } else {
+            csPhase = 'p2';
+            csCursor = 0;
+          }
+        };
+        if (voice) { csAwaitingVoice = true; voice.addEventListener('ended', proceed, { once: true }); }
+        else proceed();
       } else {
         p2Choice = ROSTER[csCursor];
         applyRosterChoice(p2, p2Choice);
-        playCharacterSelectVoice(p2);
-        characterSelectActive = false;
-        currentStage = pickStageFor(p1Choice.key, p2Choice.key);
-        resetRound();
+        const voice = playCharacterSelectVoice(p2);
+        const proceed = () => {
+          csAwaitingVoice = false;
+          characterSelectActive = false;
+          currentStage = pickStageFor(p1Choice.key, p2Choice.key);
+          resetRound();
+        };
+        if (voice) { csAwaitingVoice = true; voice.addEventListener('ended', proceed, { once: true }); }
+        else proceed();
       }
     }
     return;

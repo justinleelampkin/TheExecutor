@@ -22,6 +22,10 @@ const p2CPU = new CPUController(p2, p1);
 
 let roundTimer = 99 * TICKS_PER_SEC; // ticks, not frames -- see TICKS_PER_SEC above
 let roundOver = false;
+// Space toggles this once past the title screen (see input.js) -- freezes gameplay
+// updates while still redrawing every frame, so the current pose stays on screen
+// for screenshotting sprite issues instead of the canvas going blank/static.
+let paused = false;
 // Brief freeze on a landed special hit -- highlights the impact without slowing the
 // move's own windup/recovery (which is what actually needs to stay fast to be usable).
 // Set by resolveCombat() in combat.js when a 'special' state hitbox connects.
@@ -217,6 +221,22 @@ function loop() {
   }
   if (characterSelectActive) {
     drawCharacterSelect();
+    scheduleNext();
+    return;
+  }
+
+  if (paused) {
+    drawStage();
+    p1.draw(ctx);
+    p2.draw(ctx);
+    drawHUD();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, canvas.width, 40);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED -- press space to resume', canvas.width / 2, 26);
+    ctx.textAlign = 'left';
     scheduleNext();
     return;
   }

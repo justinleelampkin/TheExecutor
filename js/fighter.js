@@ -159,13 +159,19 @@ const SPECIAL_BOUNDARIES = {
 const SPECIAL_DUR = { seth: 72, liberty: 98, phi: 100 };
 // Every character is rendered at a fixed 180px sprite height by default, but that
 // only lines characters up visually when their art fills a similar fraction of its
-// own 500x720 canvas. Most of the roster's art (Frontman, Botanist, Lady Voix, P.H.I.,
-// Rainwalker) fills ~0.65 of its canvas at rest, and White Noise's own idle art
-// already matches that (~0.645) with no correction needed -- his old 1.165 boost here
-// was apparently calibrated against Liberty Belle instead, who fills a distinctly
-// larger ~0.75 of her own canvas, and it left him rendering ~16% bigger than
-// everyone else rather than matching them. Tune per-character, not by touching the art.
-const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767 };
+// own canvas. Measured directly (idle-frame alpha bbox / canvas height, corrected
+// for any scale already applied below) across the whole roster: Liberty Belle
+// (~0.75), Frontman (~0.715), Lady Voix (~0.729 post-correction), P.H.I. (~0.765
+// post-correction) and Botanist (~0.778) all cluster in a ~0.71-0.78 band -- that's
+// the real baseline, five of eight characters, not three. White Noise, Rainwalker
+// and Archi-Tech are the actual outliers at ~0.645-0.649, rendering visibly smaller
+// than the rest of the cast despite nothing being wrong with their art -- it's just
+// framed with more headroom in its own canvas. A previous pass here had removed
+// White Noise's boost on the theory that Liberty was the outlier and he matched
+// "everyone else" at ~0.65 -- that comparison only checked a couple of characters;
+// measuring the full roster shows the opposite. Tune per-character, not by
+// touching the art.
+const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156 };
 // Bumps every fighter's render size on a specific stage. Needed because a stage's front
 // layer has a hard floor on how small it can be drawn (it must still cover the canvas
 // width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
@@ -401,7 +407,13 @@ class Fighter {
 
       if (free) {
         if (keys[c.down]) {
-          if (this.state !== 'crouch') {
+          // only replay the settle-down transition on a genuinely fresh crouch --
+          // returning here right after a crouch-attack (state was crouchLightAtk/
+          // crouchHeavyAtk, not 'crouch') with down still held is a continuation,
+          // not a new press, so crouchPhase 'held' skips the reset and she stays
+          // at her already-settled depth instead of popping back up to frame 0
+          // (near-standing height) and replaying the transition every attack.
+          if (this.state !== 'crouch' && this.crouchPhase !== 'held') {
             // fresh press: start the settle-down transition from frame 0
             this.crouchPhase = 'entering';
             this.crouchAnimTimer = 0;

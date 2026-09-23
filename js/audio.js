@@ -124,6 +124,14 @@ function playMenuConfirmSound() {
   playSfx(MENU_CONFIRM_SOUND);
 }
 
+// Returns the Audio element so the caller can wait for it to finish (character
+// select stalls on a pick until its voice line ends -- see input.js), or null when
+// this character has no line, so the caller knows there's nothing to wait for.
 function playCharacterSelectVoice(fighter) {
-  playSfx(CHAR_SELECT_VOICE[fighter.spriteKey]);
+  const src = CHAR_SELECT_VOICE[fighter.spriteKey];
+  if (!src) return null;
+  const sfx = new Audio(src);
+  sfx.volume = SFX_VOLUME;
+  sfx.play().catch(() => {});
+  return sfx;
 }

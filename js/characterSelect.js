@@ -28,6 +28,12 @@ let csCursor = 0;
 let p1Choice = null;
 let p2Choice = null;
 let csPreviewTimer = 0;
+// true while a just-confirmed pick's select-voice line is still playing -- input.js
+// blocks cursor/confirm input and holds off the phase transition (p1->p2, or into
+// the match) until it clears, so the screen "stalls" on the pick instead of cutting
+// away over the voice line. A character with no voice line never sets this (see
+// playCharacterSelectVoice's return value in audio.js).
+let csAwaitingVoice = false;
 let csPreviewFrame = 0;
 
 function csNextUnlocked(from, dir) {
