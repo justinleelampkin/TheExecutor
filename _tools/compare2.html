@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>compare2</title></head>
+<body style="background:#333;margin:0">
+<canvas id="c" width="900" height="360" style="background:#555;display:block"></canvas>
+<script>
+const params = new URLSearchParams(location.search);
+const srcs = params.get('srcs').split(',');
+const H = parseInt(params.get('H') || '300');
+const floorY = H + 40;
+function loadImg(src) {
+  return new Promise((res) => { const img = new Image(); img.onload = () => res(img); img.src = src; });
+}
+async function run() {
+  const canvas = document.getElementById('c');
+  canvas.height = floorY + 20;
+  canvas.width = Math.max(900, srcs.length * 180);
+  const ctx = canvas.getContext('2d');
+  for (let n = 0; n < srcs.length; n++) {
+    const img = await loadImg(srcs[n] + '?t=' + Date.now());
+    const drawW = H * (img.width / img.height);
+    const x = n * 180;
+    ctx.drawImage(img, x, floorY - H, drawW, H);
+    ctx.strokeStyle = 'lime';
+    ctx.beginPath(); ctx.moveTo(x, floorY); ctx.lineTo(x + 180, floorY); ctx.stroke();
+  }
+}
+run();
+</script>
+</body></html>
