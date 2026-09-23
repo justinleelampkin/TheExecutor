@@ -50,12 +50,19 @@ function resolveCombat() {
 function checkRoundEnd() {
   if (roundOver) return;
   if (p1.hp <= 0 || p2.hp <= 0 || roundTimer <= 0) {
+    const winner = p1.hp > p2.hp ? p1 : (p2.hp > p1.hp ? p2 : null);
+    // a finishing jump-attack (or the clock running out mid-jump) can end the round
+    // while the winner is still airborne -- once roundOver flips true, game.js's loop
+    // stops calling update() (and with it the gravity that would bring them down), so
+    // starting 'victory' here immediately would leave them frozen floating in the air
+    // for the whole celebration. Hold off until they've actually landed.
+    if (winner && winner.y < GROUND_Y) return;
     roundOver = true;
     // brief grace period before the rematch/character-select prompt accepts input,
     // so the winner announcement has a moment to register before anything's pressable
     roundOverTimer = 45;
-    if (p1.hp > p2.hp) { p1.wins++; p1.startState('victory', 999); playVictorySound(); }
-    else if (p2.hp > p1.hp) { p2.wins++; p2.startState('victory', 999); playLossSound(); }
+    if (winner === p1) { p1.wins++; p1.startState('victory', 999); playVictorySound(); }
+    else if (winner === p2) { p2.wins++; p2.startState('victory', 999); playLossSound(); }
   }
 }
 
