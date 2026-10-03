@@ -124,7 +124,7 @@ function drawCharacterSelect() {
   // the same way drawSpriteFrame() does in-game, anchored to a fixed floor line so
   // characters don't all render at a visually mismatched height here just because the
   // in-game correction never got applied to this preview.
-  const baseSpriteH = 210;
+  const baseSpriteH = 210 * 1.75;
   const floorY = canvas.height - 20;
   const idleAnim = SPRITES[choice.key] && SPRITES[choice.key].idle;
   const idleReady = !!(idleAnim && idleAnim.loaded >= idleAnim.count);

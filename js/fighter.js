@@ -148,8 +148,9 @@ const SPECIAL_BOUNDARIES = {
   // through to plain even spacing via getProgressFrame() like most other characters.
   // liberty's were tuned for her old 13-frame special too -- the new one is 12 frames
   // (three 4-frame sheets, each building to a burst) so she gets even spacing as well:
-  // 98 ticks / 12 frames, with the three burst peaks (frames 3, 7, 8) at ~ticks 25-33,
-  // 57-65 and 65-73 -- see the matching hit windows in attackHitbox().
+  // 82 ticks / 12 frames (sped up from 98 after "feels very slow"), with the three burst
+  // peaks (frames 3, 7, 8) at ~ticks 21-28, 48-54 and 55-62 -- see the matching hit
+  // windows in attackHitbox().
 };
 // P.H.I.'s special was reported as "passing too quickly" -- literally duplicating his
 // 8 special frames wouldn't fix that on its own, since getSpecialFrameIndex() ->
@@ -163,7 +164,7 @@ const SPECIAL_BOUNDARIES = {
 // out the windup/recovery the opponent gets to react to. See the matching `phi` branch
 // in attackHitbox() below, which has to track whatever this value is or the hitbox
 // window lands during the wrong pose.
-const SPECIAL_DUR = { seth: 72, liberty: 98, phi: 100 };
+const SPECIAL_DUR = { seth: 72, liberty: 82, phi: 100 };
 // Every character is rendered at a fixed 180px sprite height by default, but that
 // only lines characters up visually when their art fills a similar fraction of its
 // own canvas. Measured directly (idle-frame alpha bbox / canvas height, corrected
@@ -316,11 +317,11 @@ class Fighter {
     if (this.state === 'special') {
       if (this.spriteKey === 'liberty') {
         // three-hit flying-fist combo -- one window per burst frame of her 12-frame
-        // special (frames 3, 7, 8 at the even 98/12 spacing)
+        // special (frames 3, 7, 8 at the even 82/12 spacing)
         const windows = [
-          { start: 25, end: 33, id: 'h1', dmg: 7, kb: 6 },
-          { start: 57, end: 65, id: 'h2', dmg: 7, kb: 10 },
-          { start: 66, end: 74, id: 'h3', dmg: 9, kb: 14 },
+          { start: 21, end: 28, id: 'h1', dmg: 7, kb: 6 },
+          { start: 48, end: 54, id: 'h2', dmg: 7, kb: 10 },
+          { start: 55, end: 62, id: 'h3', dmg: 9, kb: 14 },
         ];
         for (const w of windows) {
           if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
@@ -569,8 +570,10 @@ class Fighter {
     if (this.state === 'special') {
       if (this.spriteKey === 'liberty') {
         // sustained dash across the launch -> spin-kicks -> recover phases
-        const dashing = this.stateTimer >= 26 && this.stateTimer < 75;
-        this.vx = dashing ? this.facing * 4.5 : 0;
+        // (22-63 at 5.4px/tick -- same ~220px of travel as the old 98-tick version's
+        // 26-75 at 4.5, just compressed along with SPECIAL_DUR.liberty)
+        const dashing = this.stateTimer >= 22 && this.stateTimer < 63;
+        this.vx = dashing ? this.facing * 5.4 : 0;
       } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth') {
         // ranged specials (soundwave blast / water-bear summon / thrown vinyl disc /
         // charged energy blast) are stationary -- the hit reaches out on its own
