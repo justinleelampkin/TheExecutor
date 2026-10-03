@@ -36,16 +36,16 @@ const ANIM_FOLDER = {
 // for that state until it's added here, so a character can be built up incrementally.
 const CHAR_ANIMS = {
   seth: {
-    walk: 8, idle: 4, crouch: 4, jumpNeutral: 6, jumpForward: 6,
-    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 6, heavyAtk: 6,
-    crouchLightAtk: 6, crouchHeavyAtk: 6, special: 9, knockdown: 5,
-    victory: 10, block: 3, hitstun: 3,
+    walk: 7, idle: 5, crouch: 6, jumpNeutral: 7, jumpForward: 7,
+    jumpLightAtk: 4, jumpHeavyAtk: 8, lightAtk: 8, heavyAtk: 5,
+    crouchLightAtk: 4, crouchHeavyAtk: 8, special: 11, knockdown: 7,
+    victory: 10, block: 4, hitstun: 4,
   },
   liberty: {
-    walk: 8, idle: 6, crouch: 6, jumpNeutral: 6, jumpForward: 6,
-    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 6, heavyAtk: 6,
-    crouchLightAtk: 6, crouchHeavyAtk: 6, special: 13, knockdown: 5,
-    victory: 10, block: 3, hitstun: 3,
+    walk: 7, idle: 5, crouch: 7, jumpNeutral: 8, jumpForward: 8,
+    jumpLightAtk: 4, jumpHeavyAtk: 8, lightAtk: 7, heavyAtk: 7,
+    crouchLightAtk: 4, crouchHeavyAtk: 8, special: 12, knockdown: 7,
+    victory: 15, block: 4, hitstun: 4,
   },
   // Full moveset. His special still has no hand-tuned hitbox/dash choreography
   // of its own (see attackHitbox() and the 'special' dash-speed branch in
@@ -59,8 +59,10 @@ const CHAR_ANIMS = {
   },
   // Full moveset. jumpForward reuses the same art as jumpNeutral -- there's no
   // separate directional jump sheet for him, so both point at the same frames.
-  // His special also borrows White Noise's hitbox/dash choreography, same as
-  // Botanist's.
+  // His special throws a vinyl disc that visibly detaches from his hand and
+  // flies off (see the `frontman` branch in attackHitbox()) -- stationary
+  // ranged hit rather than the generic melee hitbox, same idea as Lady Voix's
+  // soundwave blast.
   frontman: {
     walk: 8, idle: 5, crouch: 3, lightAtk: 5, heavyAtk: 5,
     jumpNeutral: 6, jumpForward: 6,
@@ -69,9 +71,9 @@ const CHAR_ANIMS = {
   },
   // Full moveset. Voice/sound-themed attacks (light/heavy punches emit a sonic burst,
   // special is a mic-stand soundwave blast) fitting her "Lady Voix" name. jumpForward
-  // reuses the same single jump sheet as jumpNeutral, like Frontman. Her special has no
-  // hand-tuned hitbox/dash choreography yet -- borrows White Noise's, same as Botanist
-  // and Frontman. Several of her sheets (crouch, victory) needed their own scale
+  // reuses the same single jump sheet as jumpNeutral, like Frontman. Her special is a
+  // stationary ranged blast (see the `ladyvoix` branch in attackHitbox()), not the
+  // generic melee hitbox. Several of her sheets (crouch, victory) needed their own scale
   // correction relative to her idle sheet -- see the README note on scale drift, and the
   // note above the crouch export in _tools/export_ladyvoix2.html for how the factor
   // was derived (comparing each sheet's own standing-pose frame height against idle's).
@@ -92,8 +94,6 @@ const CHAR_ANIMS = {
   // scale mid-celebration whenever playback crossed from one source sheet's frames
   // into the next, since each sheet's own internal scale wasn't independently
   // verified against the others closely enough -- see the README note on this).
-  // His special has no hand-tuned hitbox/dash choreography yet -- borrows White
-  // Noise's, like the others.
   // special was re-extracted from its source sheet (special_sheet.png) -- the old
   // 8-frame set was cropped tight enough to cut the ghostly-figure/tablet-smash
   // impact off mid-body on several frames instead of showing it in full, and one of
@@ -113,8 +113,9 @@ const CHAR_ANIMS = {
   // didn't fit in a single sheet, so no randomization/resolveAnimName needed here.
   // Defeat dissolves into water rather than just falling, so knockdown's later frames
   // are mostly splash effects with barely any body left -- expected, not a bug.
-  // His special has no hand-tuned hitbox/dash choreography yet -- borrows White
-  // Noise's, like the others.
+  // His special summons a water-bear that lunges out well past his own reach (see
+  // the `rainwalker` branch in attackHitbox()) -- stationary ranged hit, same idea
+  // as Lady Voix's soundwave blast and Frontman's thrown disc.
   rainwalker: {
     idle: 5, walk: 8, crouch: 5, jumpNeutral: 5, jumpForward: 5,
     jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
@@ -141,8 +142,14 @@ const CHAR_ANIMS = {
 
 // Per-character tuning that isn't a plain frame count.
 const SPECIAL_BOUNDARIES = {
-  seth: [8,16,26,32,40,50,58,66,72],
-  liberty: [8,16,26,33,40,46,53,61,68,75,84,92,98],
+  // seth's old boundaries were tuned frame-by-frame for his previous 9-frame combo
+  // special -- his new special (11 frames, a charge/release/dissipate energy blast)
+  // is a single continuous animation with no per-hit timing to match, so it falls
+  // through to plain even spacing via getProgressFrame() like most other characters.
+  // liberty's were tuned for her old 13-frame special too -- the new one is 12 frames
+  // (three 4-frame sheets, each building to a burst) so she gets even spacing as well:
+  // 98 ticks / 12 frames, with the three burst peaks (frames 3, 7, 8) at ~ticks 25-33,
+  // 57-65 and 65-73 -- see the matching hit windows in attackHitbox().
 };
 // P.H.I.'s special was reported as "passing too quickly" -- literally duplicating his
 // 8 special frames wouldn't fix that on its own, since getSpecialFrameIndex() ->
@@ -187,7 +194,7 @@ const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker:
 const STAGE_HEIGHT_SCALE = { bayou: 1.8, memorial: 1.8 };
 // Which crouch frame is the settled "deepest" pose to hold on -- most characters hold
 // on their last frame, but seth's and liberty's crouch sheets are ordered differently.
-const CROUCH_HOLD_AT = { seth: 1, liberty: 2, phi: 1 };
+const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 
 // Build SPRITES[charKey][animName] = { frames, imgs, count, loaded } for every
 // character/animation pair declared in CHAR_ANIMS. Adding a new character or a new
@@ -308,11 +315,12 @@ class Fighter {
     }
     if (this.state === 'special') {
       if (this.spriteKey === 'liberty') {
-        // three-hit combo: rising uppercut, spin-kick impact, slam landing
+        // three-hit flying-fist combo -- one window per burst frame of her 12-frame
+        // special (frames 3, 7, 8 at the even 98/12 spacing)
         const windows = [
-          { start: 33, end: 40, id: 'h1', dmg: 7, kb: 6 },
-          { start: 61, end: 68, id: 'h2', dmg: 7, kb: 10 },
-          { start: 84, end: 92, id: 'h3', dmg: 9, kb: 14 },
+          { start: 25, end: 33, id: 'h1', dmg: 7, kb: 6 },
+          { start: 57, end: 65, id: 'h2', dmg: 7, kb: 10 },
+          { start: 66, end: 74, id: 'h3', dmg: 9, kb: 14 },
         ];
         for (const w of windows) {
           if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
@@ -339,6 +347,37 @@ class Fighter {
         const range = 170 * s;
         const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
         return { x: hx, y: this.y - this.h*s*0.9, w: range, h: this.h*s*0.5, dmg: 24, kb: 20 };
+      }
+      if (this.spriteKey === 'rainwalker') {
+        // he summons a water-elemental bear that lunges out well past his own
+        // reach (frame 4 of 6 -- stateTimer ~48-59 at the shared 72-tick default
+        // duration) -- same "the hit isn't coming from his own fists" logic as Lady
+        // Voix's blast, so it gets the same stationary/extended-range treatment
+        // instead of the generic body-width melee hitbox the other four still share.
+        if (this.stateTimer < 46 || this.stateTimer > 58) return null;
+        const range = 190 * s;
+        const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
+        return { x: hx, y: this.y - this.h*s*0.9, w: range, h: this.h*s*0.55, dmg: 20, kb: 20 };
+      }
+      if (this.spriteKey === 'frontman') {
+        // throws a vinyl disc that visibly detaches and flies well away from his
+        // hand (frames 3-4 of 6 -- stateTimer ~36-59) rather than connecting with
+        // a punch, so like Lady Voix and Rainwalker's specials it's a stationary
+        // ranged hit, not the generic body-width melee hitbox.
+        if (this.stateTimer < 36 || this.stateTimer > 58) return null;
+        const range = 160 * s;
+        const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
+        return { x: hx, y: this.y - this.h*s*0.85, w: range, h: this.h*s*0.45, dmg: 20, kb: 20 };
+      }
+      if (this.spriteKey === 'seth') {
+        // charges an energy orb then fires it as a screen-filling blast (frames 4-6
+        // of his new 11-frame special -- stateTimer ~26-46 at the shared 72-tick
+        // default duration) rather than a punch, so like the other charge/blast
+        // specials above it's a stationary ranged hit, not the generic melee hitbox.
+        if (this.stateTimer < 27 || this.stateTimer > 45) return null;
+        const range = 180 * s;
+        const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
+        return { x: hx, y: this.y - this.h*s*0.85, w: range, h: this.h*s*0.55, dmg: 20, kb: 20 };
       }
       // active from the tail of the windup through the impact frame
       if (this.stateTimer < 30 || this.stateTimer > 50) return null;
@@ -532,9 +571,10 @@ class Fighter {
         // sustained dash across the launch -> spin-kicks -> recover phases
         const dashing = this.stateTimer >= 26 && this.stateTimer < 75;
         this.vx = dashing ? this.facing * 4.5 : 0;
-      } else if (this.spriteKey === 'ladyvoix') {
-        // her mic-stand soundwave blast is stationary -- it radiates outward from
-        // where she's standing rather than closing distance like a melee special
+      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth') {
+        // ranged specials (soundwave blast / water-bear summon / thrown vinyl disc /
+        // charged energy blast) are stationary -- the hit reaches out on its own
+        // rather than the character closing distance like a melee special
         this.vx = 0;
       } else if (this.spriteKey === 'phi') {
         // same dash distance/speed as the shared default (14 ticks at facing*14,
@@ -852,10 +892,18 @@ class CPUController {
     ]);
   }
 
-  applyIntent(intent, dirAction, awayAction) {
+  applyIntent(intent, dirAction, awayAction, opponent) {
     if (intent === 'approach') this.applyAction(dirAction);
     else if (intent === 'retreat') this.applyAction(awayAction);
-    else if (intent === 'block') this.applyAction(awayAction);
+    else if (intent === 'block') {
+      // low attacks only get stopped by a crouching guard (see resolveCombat()'s
+      // isLowAttack check) -- holding back alone no longer blocks everything, so
+      // the CPU needs to duck specifically when the incoming attack is one of those,
+      // checked live each tick rather than decided once at the start of the block
+      // window in case the opponent switches attack type mid-exchange.
+      const lowIncoming = opponent && ['crouchLightAtk', 'crouchHeavyAtk'].includes(opponent.state);
+      this.applyAction(lowIncoming ? Object.assign({ down: true }, awayAction) : awayAction);
+    }
     else if (intent === 'jumpAway') this.applyAction(Object.assign({ jump: true }, awayAction));
     // 'neutral' -> hold nothing
   }
@@ -901,7 +949,7 @@ class CPUController {
 
     if (this.intentTicks > 0) {
       this.intentTicks--;
-      this.applyIntent(this.intent, dirAction, awayAction);
+      this.applyIntent(this.intent, dirAction, awayAction, o);
       return;
     }
 

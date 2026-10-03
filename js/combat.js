@@ -12,7 +12,12 @@ function resolveCombat() {
         else atk.hitLock = true;
         const dirFrom = atk.x < def.x ? 1 : -1;
         const holdingBack = (def.facing === 1 && keys[def.controls.left]) || (def.facing === -1 && keys[def.controls.right]);
-        const canBlock = ['idle','walk','crouch'].includes(def.state) && holdingBack;
+        // low attacks (crouching pokes) only get blocked by a crouching guard -- standing
+        // back just isn't low enough to catch them, same high/low mixup as SF2/MK2, so
+        // there's finally a reason to ever guess wrong on block instead of holding back
+        // and being safe against everything.
+        const isLowAttack = atk.state === 'crouchLightAtk' || atk.state === 'crouchHeavyAtk';
+        const canBlock = ['idle','walk','crouch'].includes(def.state) && holdingBack && (!isLowAttack || def.state === 'crouch');
         if (canBlock) {
           def.blockHit(hb.dmg, hb.kb, dirFrom);
           def.startState('block', 14);
@@ -50,13 +55,14 @@ function resolveCombat() {
 function checkRoundEnd() {
   if (roundOver) return;
   if (p1.hp <= 0 || p2.hp <= 0 || roundTimer <= 0) {
+    // wait for BOTH fighters to land before freezing into the win screen -- once
+    // roundOver flips true, game.js's loop stops calling update() (and with it the
+    // gravity that would bring anyone down), so either side being airborne right now
+    // would otherwise freeze there for the whole victory/knockdown animation: the
+    // winner if the finishing blow was a jump-attack, or the loser if they were
+    // knocked out while jumping (an anti-air, or a projectile caught mid-jump).
+    if (p1.y < GROUND_Y || p2.y < GROUND_Y) return;
     const winner = p1.hp > p2.hp ? p1 : (p2.hp > p1.hp ? p2 : null);
-    // a finishing jump-attack (or the clock running out mid-jump) can end the round
-    // while the winner is still airborne -- once roundOver flips true, game.js's loop
-    // stops calling update() (and with it the gravity that would bring them down), so
-    // starting 'victory' here immediately would leave them frozen floating in the air
-    // for the whole celebration. Hold off until they've actually landed.
-    if (winner && winner.y < GROUND_Y) return;
     roundOver = true;
     // brief grace period before the rematch/character-select prompt accepts input,
     // so the winner announcement has a moment to register before anything's pressable
