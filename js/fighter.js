@@ -47,6 +47,15 @@ const CHAR_ANIMS = {
     crouchLightAtk: 4, crouchHeavyAtk: 8, special: 12, knockdown: 7,
     victory: 15, block: 4, hitstun: 4,
   },
+  // Full moveset from user sheets (2026-10-03). jumpForward reuses the single jump sheet
+  // (its 7th pose is a landing crouch the jump arc never reaches). Special is a
+  // 2-row tornado/dust-wave sheet; victory is 2 rows with his dog joining in.
+  coyote: {
+    walk: 7, idle: 5, crouch: 5, jumpNeutral: 7, jumpForward: 7,
+    jumpLightAtk: 5, jumpHeavyAtk: 6, lightAtk: 6, heavyAtk: 6,
+    crouchLightAtk: 5, crouchHeavyAtk: 7, special: 10, knockdown: 6,
+    victory: 10, block: 5, hitstun: 4,
+  },
   // Full moveset. His special still has no hand-tuned hitbox/dash choreography
   // of its own (see attackHitbox() and the 'special' dash-speed branch in
   // update()) -- he'll fall through to White Noise's until he gets his own
@@ -193,6 +202,7 @@ const STRIKE_FRAMES = {
   ladyvoix:   { lightAtk: [3, 3], heavyAtk: [3, 3], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 2] },
   rainwalker: { lightAtk: [2, 3], heavyAtk: [3, 3], crouchLightAtk: [3, 3], crouchHeavyAtk: [3, 3] },
   architech:  { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 3] },
+  coyote:     { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [3, 3], crouchHeavyAtk: [4, 5] },
 };
 // How far each normal/jump attack's extended pose actually reaches, measured per move from
 // the sprite frames shown during its active ticks: forward distance from the character's
@@ -211,13 +221,14 @@ const ATTACK_REACH = {
   ladyvoix:   { lightAtk: 60.4, heavyAtk: 66,   crouchLightAtk: 88.1, crouchHeavyAtk: 69.8, jumpLightAtk: 84.7, jumpHeavyAtk: 104.1 },
   rainwalker: { lightAtk: 63.6, heavyAtk: 69.6, crouchLightAtk: 56.5, crouchHeavyAtk: 54.4, jumpLightAtk: 41.2, jumpHeavyAtk: 42.8 },
   architech:  { lightAtk: 55.1, heavyAtk: 60.2, crouchLightAtk: 60.6, crouchHeavyAtk: 59.6, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
+  coyote:     { lightAtk: 61.6, heavyAtk: 93.7, crouchLightAtk: 60.4, crouchHeavyAtk: 69.7, jumpLightAtk: 67.8, jumpHeavyAtk: 77.6 },
 };
 // Ticks each walk-cycle frame is held. Walk speed is a flat 3.2px/tick, but the sprites'
 // stride is far longer than 3.2px x a 5-tick frame covers, so the feet skated. This is
 // ~0.45 x the widest foot spread (measured per character at in-game scale) / 3.2 for the
 // cycle length, clamped to a lively 6.4-8 ticks/frame. Default 5 = the old cadence.
 const WALK_TICKS_PER_FRAME = {
-  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8,
+  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8,
 };
 // Idle breathing: SF2 idles bob at roughly 8-10 ticks/frame; was 15.
 const IDLE_TICKS_PER_FRAME = 9;
@@ -235,7 +246,7 @@ const IDLE_TICKS_PER_FRAME = 9;
 // "everyone else" at ~0.65 -- that comparison only checked a couple of characters;
 // measuring the full roster shows the opposite. Tune per-character, not by
 // touching the art.
-const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156 };
+const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04 };
 // Bumps every fighter's render size on a specific stage. Needed because a stage's front
 // layer has a hard floor on how small it can be drawn (it must still cover the canvas
 // width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
@@ -379,7 +390,10 @@ class Fighter {
     const s = this.displayScale();
     if (this.state === 'jump' && this.airAttack) {
       // jump attacks: kick (heavy) hits harder than punch (light), matching the ground light/heavy split
-      if (this.airAttackTimer < 7 || this.airAttackTimer > 13) return null;
+      // The Coyote's heavy is a lunging wind-punch (see the lunge in update()), so its
+      // hit window is later: it lands on the stretched-out frames of the lunge.
+      const lunge = this.spriteKey === 'coyote' && this.airAttack === 'heavy';
+      if (this.airAttackTimer < (lunge ? 9 : 7) || this.airAttackTimer > (lunge ? 15 : 13)) return null;
       const isLight = this.airAttack === 'light'; // punch = weak
       const range = this.attackRange(isLight ? 'jumpLightAtk' : 'jumpHeavyAtk', isLight ? 60 : 78, s);
       const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
@@ -457,6 +471,16 @@ class Fighter {
         const range = 180 * s;
         const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
         return { x: hx, y: this.y - this.h*s*0.85, w: range, h: this.h*s*0.55, dmg: 20, kb: 20 };
+      }
+      if (this.spriteKey === 'coyote') {
+        // spins up a tornado that whips out in front of him (frames 5-7 of his 10 at
+        // the shared 72-tick duration -- stateTimer ~36-58, the tornado reaching ~300px
+        // at its widest). Stationary like the other ranged specials; the column is
+        // nearly full-height, so unlike the blast specials it can't be ducked.
+        if (this.stateTimer < 36 || this.stateTimer > 58) return null;
+        const range = 136 * s;
+        const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
+        return { x: hx, y: this.y - this.h*s*0.95, w: range, h: this.h*s*0.9, dmg: 22, kb: 22 };
       }
       // active from the tail of the windup through the impact frame
       if (this.stateTimer < 30 || this.stateTimer > 50) return null;
@@ -623,6 +647,14 @@ class Fighter {
       this._heavyHeld = keys[c.heavy];
     }
 
+    // The Coyote's jumping heavy strike is a forward lunge on a gust of wind: burst
+    // forward through the strike, then hand back whatever air speed the jump had.
+    if (this.airAttack === 'heavy' && this.spriteKey === 'coyote' && this.state === 'jump') {
+      const t = this.airAttackTimer;
+      if (t === 0) this.preLungeVx = this.vx;
+      if (t >= 3 && t <= 14) this.vx = this.facing * 7;
+      else if (t > 14) this.vx = this.preLungeVx || 0;
+    }
     if (this.airAttack) {
       this.airAttackTimer++;
       if (this.airAttackTimer > 20) this.airAttack = null; // animation finished; normal jump pose resumes for the rest of the arc
@@ -658,7 +690,7 @@ class Fighter {
         // 26-75 at 4.5, just compressed along with SPECIAL_DUR.liberty)
         const dashing = this.stateTimer >= 22 && this.stateTimer < 63;
         this.vx = dashing ? this.facing * 5.4 : 0;
-      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth') {
+      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth' || this.spriteKey === 'coyote') {
         // ranged specials (soundwave blast / water-bear summon / thrown vinyl disc /
         // charged energy blast) are stationary -- the hit reaches out on its own
         // rather than the character closing distance like a melee special
