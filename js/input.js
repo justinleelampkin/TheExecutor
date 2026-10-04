@@ -6,7 +6,7 @@ window.addEventListener('keydown', e => {
   if (titleScreenActive) { titleScreenActive = false; modeSelectActive = true; return; }
   // pause toggle -- lives outside every screen's own key handling below so it always
   // works once past the title, including mid-match; freezes gameplay updates while
-  // still redrawing (see the `paused` branch in game.js's loop()) so a pose stays on
+  // still redrawing (see the `paused` branch in game.js's renderFight()) so a pose stays on
   // screen for screenshotting sprite issues instead of the canvas going blank.
   if (e.code === 'Space') { paused = !paused; return; }
   if (modeSelectActive) {

@@ -2,6 +2,18 @@ function aabbOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+// Hit-stop length in ticks for a connecting attack. Lights are a short tick, heavies
+// land harder, a full special connecting is the biggest freeze, and a blocked hit gets
+// a smaller one. The hits of a multi-hit special (hitId set) only get a short freeze on
+// all but the last, or three stacked 14-tick freezes eat half the move's runtime.
+function hitStopFor(atk, hb, blocked) {
+  if (hb.hitId) return hb.hitId === 'h3' ? 12 : 5;
+  if (atk.state === 'special') return blocked ? 4 : 14;
+  const heavy = hb.dmg >= 10;
+  if (blocked) return heavy ? 4 : 2;
+  return heavy ? 6 : 3;
+}
+
 function resolveCombat() {
   [ [p1,p2], [p2,p1] ].forEach(([atk, def]) => {
     const hb = atk.attackHitbox();
@@ -22,13 +34,15 @@ function resolveCombat() {
           def.blockHit(hb.dmg, hb.kb, dirFrom);
           def.startState('block', 14);
           playBlockSound();
+          hitStopFrames = Math.max(hitStopFrames, hitStopFor(atk, hb, true));
         } else {
           def.takeHit(hb.dmg, hb.kb, dirFrom);
           playHitSound();
           atk.comboCount++; atk.comboTimer = 60;
-          // freeze the moment a special connects so it reads as a bigger deal than a
-          // regular hit, without touching the move's own real-time speed/usability
-          if (atk.state === 'special') hitStopFrames = 14;
+          // every hit freezes both fighters for a few ticks (SF2-style hit-stop) so
+          // contact has weight; the struck fighter also shakes during the freeze
+          hitStopFrames = Math.max(hitStopFrames, hitStopFor(atk, hb, false));
+          def.hitShake = true;
         }
       }
     }
@@ -75,6 +89,7 @@ function checkRoundEnd() {
 function resetRound() {
   p1.hp = 100; p2.hp = 100;
   p1.x = 260; p2.x = 740;
+  p1.prevX = p1.x; p2.prevX = p2.x; p1.prevY = p1.y; p2.prevY = p2.y; // no interpolation sweep from the old spot
   p1.meter = 0; p2.meter = 0;
   p1.state = 'idle'; p2.state = 'idle';
   roundTimer = 99 * TICKS_PER_SEC;

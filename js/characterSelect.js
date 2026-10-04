@@ -66,7 +66,10 @@ function applyRosterChoice(fighter, choice) {
 
 function drawCharacterSelect() {
   csPreviewTimer++;
-  if (csPreviewTimer > 14) { csPreviewTimer = 0; csPreviewFrame = (csPreviewFrame + 1) % 4; }
+  // same cadence as the in-match idle (IDLE_TICKS_PER_FRAME); the counter just keeps
+  // climbing and is wrapped per-character below, so 5- and 6-frame idles loop fully
+  // (a fixed %4 here used to skip their last frame)
+  if (csPreviewTimer >= IDLE_TICKS_PER_FRAME) { csPreviewTimer = 0; csPreviewFrame++; }
 
   if (csBackdropImg.complete && csBackdropImg.naturalWidth > 0) {
     const scale = canvas.width / csBackdropImg.width;

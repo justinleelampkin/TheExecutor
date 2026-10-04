@@ -201,45 +201,28 @@ function drawDifficultySelect() {
   ctx.fillText('press 1, 2, or 3', canvas.width / 2, 400);
 }
 
-function scheduleNext() { setTimeout(loop, FRAME_MS); }
+// ---------- Main loop ----------
+// The simulation runs at a fixed FRAME_MS (48 ticks/sec) no matter how fast the display
+// refreshes: requestAnimationFrame drives rendering, an accumulator turns elapsed real
+// time into whole logic ticks, and fighters are drawn blended between their last two
+// tick positions (renderAlpha) so movement stays smooth on 60/120/144Hz screens. The
+// old setTimeout(loop, 1000/48) paced both logic and drawing together, which on a 60Hz
+// display repeated a stale frame every fifth refresh (visible stutter).
+let renderAlpha = 1;          // 0..1 blend between a fighter's previous and current tick position
+let lastScreen = 'menu';      // what the last logic tick left on screen: 'menu' | 'fight' | 'paused'
+let lastTickAdvanced = false; // true if that tick actually moved the fighters (not paused / hit-stop / round over)
 
-function loop() {
-  if (titleScreenActive) {
-    drawTitleScreen();
-    scheduleNext();
-    return;
-  }
-  if (modeSelectActive) {
-    drawModeSelect();
-    scheduleNext();
-    return;
-  }
-  if (difficultySelectActive) {
-    drawDifficultySelect();
-    scheduleNext();
-    return;
-  }
-  if (characterSelectActive) {
-    drawCharacterSelect();
-    scheduleNext();
-    return;
-  }
+// One logic tick. Menu screens still draw themselves here (their timers count ticks);
+// the fight screen only updates state and gets drawn per display frame by renderFight().
+function tick() {
+  lastTickAdvanced = false;
+  if (titleScreenActive) { drawTitleScreen(); lastScreen = 'menu'; return; }
+  if (modeSelectActive) { drawModeSelect(); lastScreen = 'menu'; return; }
+  if (difficultySelectActive) { drawDifficultySelect(); lastScreen = 'menu'; return; }
+  if (characterSelectActive) { drawCharacterSelect(); lastScreen = 'menu'; return; }
 
-  if (paused) {
-    drawStage();
-    p1.draw(ctx);
-    p2.draw(ctx);
-    drawHUD();
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(0, 0, canvas.width, 40);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 20px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('PAUSED -- press space to resume', canvas.width / 2, 26);
-    ctx.textAlign = 'left';
-    scheduleNext();
-    return;
-  }
+  if (paused) { lastScreen = 'paused'; return; }
+  lastScreen = 'fight';
 
   if (!roundOver) {
     if (hitStopFrames > 0) {
@@ -251,6 +234,7 @@ function loop() {
       resolveCombat();
       roundTimer--;
       checkRoundEnd();
+      lastTickAdvanced = true;
     }
   } else {
     p1.stateTimer++;
@@ -260,12 +244,40 @@ function loop() {
     // drawHUD) waits for the player to pick -- see the Digit1/Digit2 handling in
     // input.js -- instead of auto-continuing like it used to.
   }
+}
 
+function renderFight(alpha) {
+  renderAlpha = lastTickAdvanced ? alpha : 1;
   drawStage();
   p1.draw(ctx);
   p2.draw(ctx);
   drawHUD();
-
-  scheduleNext();
+  if (lastScreen === 'paused') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, canvas.width, 40);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED -- press space to resume', canvas.width / 2, 26);
+    ctx.textAlign = 'left';
+  }
 }
-loop();
+
+let lastFrameTime = performance.now();
+let tickAccumulator = FRAME_MS; // start with one tick banked so the first frame draws immediately
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  // clamp so a long stall (tab switch, breakpoint) doesn't fast-forward the game
+  tickAccumulator += Math.min(now - lastFrameTime, 100);
+  lastFrameTime = now;
+  let steps = 0;
+  while (tickAccumulator >= FRAME_MS && steps < 5) {
+    tick();
+    tickAccumulator -= FRAME_MS;
+    steps++;
+  }
+  if (steps === 5) tickAccumulator = 0; // couldn't keep up -- drop the backlog
+  if (lastScreen !== 'menu') renderFight(tickAccumulator / FRAME_MS);
+}
+requestAnimationFrame(frame);

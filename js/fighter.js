@@ -165,6 +165,62 @@ const SPECIAL_BOUNDARIES = {
 // in attackHitbox() below, which has to track whatever this value is or the hitbox
 // window lands during the wrong pose.
 const SPECIAL_DUR = { seth: 72, liberty: 82, phi: 100 };
+
+// Normal-attack timing, in ticks (48/sec). SF2-style: a short startup, a window where
+// the hitbox is live and the extended pose is held, then a recovery that carries the
+// rest of the move. `dur` is the whole move, `start`/`end` bracket the active hits.
+// (This replaces the old "35%-70% of an 18/26-tick move" -- lights were ~2x slower to
+// connect than SF2's jab and barely faster overall than heavies.)
+const NORMAL_TIMING = {
+  lightAtk:       { dur: 14, start: 4, end: 8 },
+  heavyAtk:       { dur: 26, start: 8, end: 16 },
+  crouchLightAtk: { dur: 13, start: 4, end: 8 },
+  crouchHeavyAtk: { dur: 26, start: 8, end: 16 },
+};
+// Which sprite frames [first, last] show the extended pose (held for the active window).
+// Frames before it share the startup ticks, frames after it share the recovery -- see
+// getAttackFrame(). Measured from each sheet's farthest-reaching frames; a character or
+// move not listed falls back to the old 35%-70% span of its frames, so adding one is
+// data-only (the last two characters need entries once their sheets are in).
+const STRIKE_FRAMES = {
+  seth:    { lightAtk: [4, 5], heavyAtk: [2, 2], crouchLightAtk: [2, 3], crouchHeavyAtk: [4, 6] },
+  liberty: { lightAtk: [3, 3], heavyAtk: [3, 5], crouchLightAtk: [2, 3], crouchHeavyAtk: [4, 5] },
+  // the six older roster sheets: peak forward reach per frame (rough -- they weren't
+  // re-anchored like seth/liberty), so tweak by eye if a pose looks held on the wrong frame
+  phi:        { lightAtk: [3, 3], heavyAtk: [3, 3], crouchLightAtk: [2, 2], crouchHeavyAtk: [3, 3] },
+  botanist:   { lightAtk: [3, 4], heavyAtk: [2, 8], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 3] },
+  frontman:   { lightAtk: [3, 3], heavyAtk: [3, 3], crouchLightAtk: [3, 3], crouchHeavyAtk: [2, 3] },
+  ladyvoix:   { lightAtk: [3, 3], heavyAtk: [3, 3], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 2] },
+  rainwalker: { lightAtk: [2, 3], heavyAtk: [3, 3], crouchLightAtk: [3, 3], crouchHeavyAtk: [3, 3] },
+  architech:  { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 3] },
+};
+// How far each normal/jump attack's extended pose actually reaches, measured per move from
+// the sprite frames shown during its active ticks: forward distance from the character's
+// center to the rightmost opaque pixel (fist, boot, blast), in px at displayScale 1 --
+// multiply by displayScale() for on-screen px. attackHitbox() ends the hitbox ~14px past
+// this so a hit lands when the limb visibly touches. (The old fixed 55/75/60/78 x scale
+// reached 40-150px past the visible limb, and by a different amount for every character.)
+// Re-measure a character's row with _tools/measure_reach.js when its attack art changes;
+// characters/moves not listed fall back to the old fixed ranges.
+const ATTACK_REACH = {
+  seth:       { lightAtk: 36.5, heavyAtk: 53.6, crouchLightAtk: 63,   crouchHeavyAtk: 65.4, jumpLightAtk: 50.9, jumpHeavyAtk: 53.1 },
+  liberty:    { lightAtk: 54,   heavyAtk: 61,   crouchLightAtk: 46.8, crouchHeavyAtk: 71.9, jumpLightAtk: 61.2, jumpHeavyAtk: 70.9 },
+  phi:        { lightAtk: 83.2, heavyAtk: 70.7, crouchLightAtk: 49.6, crouchHeavyAtk: 51.8, jumpLightAtk: 62.4, jumpHeavyAtk: 80.5 },
+  botanist:   { lightAtk: 47.8, heavyAtk: 62.3, crouchLightAtk: 46,   crouchHeavyAtk: 49.3, jumpLightAtk: 62.3, jumpHeavyAtk: 62.3 },
+  frontman:   { lightAtk: 51.7, heavyAtk: 52.5, crouchLightAtk: 62.3, crouchHeavyAtk: 62.3, jumpLightAtk: 52.3, jumpHeavyAtk: 58 },
+  ladyvoix:   { lightAtk: 60.4, heavyAtk: 66,   crouchLightAtk: 88.1, crouchHeavyAtk: 69.8, jumpLightAtk: 84.7, jumpHeavyAtk: 104.1 },
+  rainwalker: { lightAtk: 63.6, heavyAtk: 69.6, crouchLightAtk: 56.5, crouchHeavyAtk: 54.4, jumpLightAtk: 41.2, jumpHeavyAtk: 42.8 },
+  architech:  { lightAtk: 55.1, heavyAtk: 60.2, crouchLightAtk: 60.6, crouchHeavyAtk: 59.6, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
+};
+// Ticks each walk-cycle frame is held. Walk speed is a flat 3.2px/tick, but the sprites'
+// stride is far longer than 3.2px x a 5-tick frame covers, so the feet skated. This is
+// ~0.45 x the widest foot spread (measured per character at in-game scale) / 3.2 for the
+// cycle length, clamped to a lively 6.4-8 ticks/frame. Default 5 = the old cadence.
+const WALK_TICKS_PER_FRAME = {
+  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8,
+};
+// Idle breathing: SF2 idles bob at roughly 8-10 ticks/frame; was 15.
+const IDLE_TICKS_PER_FRAME = 9;
 // Every character is rendered at a fixed 180px sprite height by default, but that
 // only lines characters up visually when their art fills a similar fraction of its
 // own canvas. Measured directly (idle-frame alpha bbox / canvas height, corrected
@@ -224,10 +280,10 @@ const SIMPLE_STATE_ANIM = {
   walk:           { anim: 'walk',           frame: f => f.animFrame },
   idle:           { anim: 'idle',           frame: f => f.idleFrame },
   crouch:         { anim: 'crouch',         frame: f => f.crouchFrame },
-  lightAtk:       { anim: 'lightAtk',       frame: f => f.getProgressFrame('lightAtk') },
-  heavyAtk:       { anim: 'heavyAtk',       frame: f => f.getProgressFrame('heavyAtk') },
-  crouchLightAtk: { anim: 'crouchLightAtk', frame: f => f.getProgressFrame('crouchLightAtk') },
-  crouchHeavyAtk: { anim: 'crouchHeavyAtk', frame: f => f.getProgressFrame('crouchHeavyAtk') },
+  lightAtk:       { anim: 'lightAtk',       frame: f => f.getAttackFrame('lightAtk') },
+  heavyAtk:       { anim: 'heavyAtk',       frame: f => f.getAttackFrame('heavyAtk') },
+  crouchLightAtk: { anim: 'crouchLightAtk', frame: f => f.getAttackFrame('crouchLightAtk') },
+  crouchHeavyAtk: { anim: 'crouchHeavyAtk', frame: f => f.getAttackFrame('crouchHeavyAtk') },
   special:        { anim: 'special',        frame: f => f.getSpecialFrameIndex() },
   knockdown:      { anim: 'knockdown',      frame: f => f.getKnockdownFrameIndex() },
   victory:        { anim: f => f.victoryVariant, frame: f => f.getVictoryFrameIndex() },
@@ -257,6 +313,11 @@ class Fighter {
     this.x = opts.x;
     this.y = GROUND_Y;
     this.vx = 0; this.vy = 0;
+    // position at the start of the last logic tick -- the renderer blends between this
+    // and (x, y) by `renderAlpha` (game.js) so motion stays smooth when the display
+    // refresh rate isn't a multiple of the 48 tick/sec simulation
+    this.prevX = this.x; this.prevY = this.y;
+    this.hitShake = false; // set by resolveCombat() on a clean hit; shakes the sprite during hit-stop
     this.facing = opts.facing; // 1 = right, -1 = left
     this.w = 70; this.h = 150;
     this.color = opts.color;
@@ -304,15 +365,27 @@ class Fighter {
     return { x: this.x - (this.w*s)/2, y: crouch ? this.y - this.h*s*0.28 : this.y - this.h*s, w: this.w*s, h: crouch ? this.h*s*0.28 : this.h*s };
   }
 
+  // Width of a normal/jump attack's hitbox beyond the body edge: reaches the measured tip
+  // of the extended pose (ATTACK_REACH) plus a small margin, never shorter than a 24px
+  // poke past the body. `fallback` is the old per-scale constant for unmeasured moves.
+  attackRange(anim, fallback, s) {
+    const reach = ATTACK_REACH[this.spriteKey] && ATTACK_REACH[this.spriteKey][anim];
+    if (reach === undefined) return fallback * s;
+    const bodyHalf = (this.w * s) / 2;
+    return Math.max(bodyHalf + 24, reach * s + 14) - bodyHalf;
+  }
+
   attackHitbox() {
     const s = this.displayScale();
     if (this.state === 'jump' && this.airAttack) {
       // jump attacks: kick (heavy) hits harder than punch (light), matching the ground light/heavy split
       if (this.airAttackTimer < 7 || this.airAttackTimer > 13) return null;
       const isLight = this.airAttack === 'light'; // punch = weak
-      const range = (isLight ? 60 : 78) * s;
+      const range = this.attackRange(isLight ? 'jumpLightAtk' : 'jumpHeavyAtk', isLight ? 60 : 78, s);
       const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
-      return { x: hx, y: this.y - this.h*s*0.75, w: range, h: this.h*s*0.4, dmg: isLight ? 7 : 12, kb: isLight ? 8 : 15 };
+      // P.H.I.'s jump punch throws his cannon arm higher than the shared 0.75 line
+      const top = (this.spriteKey === 'phi' && isLight) ? 0.87 : 0.75;
+      return { x: hx, y: this.y - this.h*s*top, w: range, h: this.h*s*0.4, dmg: isLight ? 7 : 12, kb: isLight ? 8 : 15 };
     }
     if (this.state === 'special') {
       if (this.spriteKey === 'liberty') {
@@ -325,7 +398,12 @@ class Fighter {
         ];
         for (const w of windows) {
           if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
-            return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: w.dmg, kb: w.kb, hitId: w.id };
+            // her leading fist/burst sits well ahead of her body on these frames
+            // (~70px at in-game scale), so the box reaches forward by that much
+            // instead of stopping at her torso while the flash is already on them
+            const reach = 70;
+            const bx = this.facing === 1 ? this.x - (this.w*s)/2 : this.x - (this.w*s)/2 - reach;
+            return { x: bx, y: this.y - this.h*s, w: this.w*s + reach, h: this.h*s, dmg: w.dmg, kb: w.kb, hitId: w.id };
           }
         }
         return null;
@@ -385,23 +463,27 @@ class Fighter {
       return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: 20, kb: 20 };
     }
     if (!['lightAtk','heavyAtk','crouchLightAtk','crouchHeavyAtk'].includes(this.state)) return null;
-    // active frames window
-    const dur = (this.state === 'lightAtk') ? 18 : (this.state === 'crouchLightAtk') ? 16 : 26;
-    const activeStart = dur * 0.35, activeEnd = dur * 0.7;
-    if (this.stateTimer < activeStart || this.stateTimer > activeEnd) return null;
+    // active frames window (see NORMAL_TIMING)
+    const timing = NORMAL_TIMING[this.state];
+    if (this.stateTimer < timing.start || this.stateTimer > timing.end) return null;
     const isLight = this.state === 'lightAtk' || this.state === 'crouchLightAtk';
-    const range = (isLight ? 55 : 75) * s;
+    const range = this.attackRange(this.state, isLight ? 55 : 75, s);
     const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
     // crouching attacks strike lower, matching the crouched fist height
     const isCrouching = this.state === 'crouchHeavyAtk' || this.state === 'crouchLightAtk';
     let hy;
     if (isCrouching) {
-      hy = this.y - this.h*s*0.4;
+      // Lady Voix's crouch light is a high leg kick, well above everyone else's low poke
+      hy = this.y - this.h*s*((this.spriteKey === 'ladyvoix' && isLight) ? 0.62 : 0.46);
     } else if (this.spriteKey === 'ladyvoix') {
       // her "punches" are actually a vocal blast from her mouth, not a fist thrown
       // at chest height like everyone else, so the generic 0.65 ratio landed the
-      // hitbox on empty air above her raised arm instead of where the sound comes from.
-      hy = this.y - this.h*s*0.85;
+      // hitbox on empty air above her raised arm instead of where the sound comes from
+      // (and the old 0.85 still sat ~30px under the blast at mouth height).
+      hy = this.y - this.h*s*1.1;
+    } else if (this.spriteKey === 'liberty') {
+      // her fist is thrown a little above the shared line (it sat just over the box)
+      hy = this.y - this.h*s*0.72;
     } else if (this.spriteKey === 'phi') {
       // his short, wide-stanced legs put his gun/fist noticeably higher up his own
       // silhouette than the generic 0.65 ratio assumes (that ratio is also measured
@@ -428,6 +510,8 @@ class Fighter {
   }
 
   update(dt, opponent) {
+    this.prevX = this.x; this.prevY = this.y;
+    this.hitShake = false; // update() only runs when not in hit-stop, so the shake ends with the freeze
     this.stateTimer++;
     const c = this.controls;
     const grounded = this.y >= GROUND_Y;
@@ -502,20 +586,20 @@ class Fighter {
             this.specialHitsApplied = new Set();
             this.startState('special', SPECIAL_DUR[this.spriteKey] || 72);
           } else if (keys[c.down]) {
-            this.startState('crouchLightAtk', 16);
+            this.startState('crouchLightAtk', NORMAL_TIMING.crouchLightAtk.dur);
             playWhiffSound();
           } else {
-            this.startState('lightAtk', 18);
+            this.startState('lightAtk', NORMAL_TIMING.lightAtk.dur);
             playWhiffSound();
           }
           this.inputBuf.length = 0;
         }
         if (keys[c.heavy] && !this._heavyHeld) {
           if (keys[c.down]) {
-            this.startState('crouchHeavyAtk', 26);
+            this.startState('crouchHeavyAtk', NORMAL_TIMING.crouchHeavyAtk.dur);
             playWhiffSound();
           } else {
-            this.startState('heavyAtk', 26);
+            this.startState('heavyAtk', NORMAL_TIMING.heavyAtk.dur);
             playWhiffSound();
           }
         }
@@ -628,10 +712,11 @@ class Fighter {
     // animation frame advance (only meaningful for sprite-based walk)
     this.animTimer++;
     const walkLen = this.anim('walk') ? this.anim('walk').count : 8;
-    if (this.animTimer > 4) { this.animTimer = 0; this.animFrame = (this.animFrame + 1) % walkLen; }
+    const walkHold = WALK_TICKS_PER_FRAME[this.spriteKey] || 5;
+    if (this.animTimer >= walkHold) { this.animTimer -= walkHold; this.animFrame = (this.animFrame + 1) % walkLen; }
     this.idleTimer++;
     const idleLen = this.anim('idle') ? this.anim('idle').count : 4;
-    if (this.idleTimer > 14) { this.idleTimer = 0; this.idleFrame = (this.idleFrame + 1) % idleLen; }
+    if (this.idleTimer >= IDLE_TICKS_PER_FRAME) { this.idleTimer = 0; this.idleFrame = (this.idleFrame + 1) % idleLen; }
     // crouch: play the settle-down transition once, then hold on the final (deepest) frame
     if (this.crouchPhase === 'entering') {
       this.crouchAnimTimer++;
@@ -701,11 +786,17 @@ class Fighter {
     // scale only the render here without touching displayScale().
     if (this.spriteKey === 'frontman' && this.state === 'victory') drawH *= 1.2;
     const drawW = drawH * (img.width / img.height);
+    // blend between last tick's and this tick's position (renderAlpha is 1 whenever the
+    // sim didn't just advance: paused, hit-stop, round over)
+    let rx = this.prevX + (this.x - this.prevX) * renderAlpha;
+    const ry = this.prevY + (this.y - this.prevY) * renderAlpha;
+    // hit-stop shake: the struck fighter judders side to side while the game is frozen
+    if (this.hitShake && hitStopFrames > 0) rx += (hitStopFrames % 2 ? 3 : -3);
     ctx.save();
     if (this.facing === -1) {
-      ctx.translate(this.x, 0); ctx.scale(-1,1); ctx.translate(-this.x, 0);
+      ctx.translate(rx, 0); ctx.scale(-1,1); ctx.translate(-rx, 0);
     }
-    ctx.drawImage(img, this.x - drawW/2, this.y - drawH + 6, drawW, drawH);
+    ctx.drawImage(img, rx - drawW/2, ry - drawH + 6, drawW, drawH);
     ctx.restore();
   }
 
@@ -753,6 +844,32 @@ class Fighter {
     if (!a) return 0;
     const progress = this.stateTimer / this.stateDur;
     return Math.min(a.count - 1, Math.floor(progress * a.count));
+  }
+
+  // Sprite frame for a normal attack, weighted by phase instead of spread evenly: the
+  // frames before the strike pose share the short startup, the strike frame(s) are held
+  // for the whole hit window (so the extended pose is what's on screen while the hitbox
+  // is live), and the remaining frames share the long recovery. See NORMAL_TIMING /
+  // STRIKE_FRAMES.
+  getAttackFrame(animName) {
+    const a = this.anim(animName);
+    if (!a) return 0;
+    const n = a.count, t = NORMAL_TIMING[animName];
+    const listed = STRIKE_FRAMES[this.spriteKey] && STRIKE_FRAMES[this.spriteKey][animName];
+    let sf = listed ? listed[0] : Math.floor(n * 0.35);
+    let sl = listed ? listed[1] : Math.floor(n * 0.7);
+    sf = Math.min(sf, n - 1); sl = Math.max(sf, Math.min(sl, n - 1));
+    const tick = this.stateTimer;
+    if (tick < t.start) {
+      return sf === 0 ? 0 : Math.min(sf - 1, Math.floor(tick / t.start * sf));
+    }
+    if (tick <= t.end) {
+      const span = t.end - t.start + 1, k = sl - sf + 1;
+      return sf + Math.min(k - 1, Math.floor((tick - t.start) / span * k));
+    }
+    if (sl >= n - 1) return n - 1;
+    const recoveryTicks = Math.max(1, t.dur - (t.end + 1)), k = n - 1 - sl;
+    return sl + 1 + Math.min(k - 1, Math.floor((tick - (t.end + 1)) / recoveryTicks * k));
   }
 
   getSpecialFrameIndex() {
