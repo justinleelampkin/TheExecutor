@@ -1,8 +1,6 @@
 // ---------- Name logo graphics ----------
-const sethNameLogo = new Image();
-sethNameLogo.src = "assets/logos/white-noise.webp";
-const libertyNameLogo = new Image();
-libertyNameLogo.src = "assets/logos/liberty-belle.webp";
+// (the old eager sethNameLogo/libertyNameLogo are gone: every roster entry now loads its own
+// logo on first use -- see the nameLogoImg getter below)
 
 // ---------- Character select ----------
 const csBackdropImg = new Image();
@@ -18,9 +16,14 @@ const ROSTER = [
   { key: 'ladyvoix',   name: 'LADY VOIX',     color: '#3a1a33', accent: '#c04fd1', unlocked: true,  tileSrc: "assets/portraits/lady-voix.webp",  nameLogoSrc: "assets/logos/lady-voix.webp" },
   { key: 'botanist',   name: 'THE BOTANIST',  color: '#2b3a1f', accent: '#8fd14f', unlocked: true,  tileSrc: "assets/portraits/botanist.webp",   nameLogoSrc: "assets/logos/botanist.webp" },
   { key: 'architech',  name: 'ARCHI-TECH',    color: '#5a1a1a', accent: '#f2b013', unlocked: true,  tileSrc: "assets/portraits/archi-tech.webp", nameLogoSrc: "assets/logos/archi-tech.webp" },
-  { key: 'echo',       name: 'ECHO',          color: '#333', accent: '#888', unlocked: false, tileSrc: "assets/portraits/echo.webp",       nameLogoSrc: "assets/logos/echo.webp" },
+  { key: 'echo',       name: 'ECHO',          color: '#1a2233', accent: '#8fb4ff', unlocked: true,  tileSrc: "assets/portraits/echo.webp",       nameLogoSrc: "assets/logos/echo.webp" },
 ];
-ROSTER.forEach(r => { r.tileImg = new Image(); r.tileImg.src = r.tileSrc; r.nameLogoImg = new Image(); r.nameLogoImg.src = r.nameLogoSrc; });
+// Portrait tiles load up front (small, and the select grid needs all of them); the name logo
+// is created the first time something asks for it (hovered on select, or shown in the HUD).
+ROSTER.forEach(r => {
+  r.tileImg = new Image(); r.tileImg.src = r.tileSrc;
+  Object.defineProperty(r, "nameLogoImg", { get() { if (!this._logo) { this._logo = new Image(); this._logo.src = this.nameLogoSrc; } return this._logo; } });
+});
 
 let characterSelectActive = false;
 let csPhase = 'p1'; // 'p1' | 'p2'
@@ -121,6 +124,8 @@ function drawCharacterSelect() {
 
   // side preview: hovered character's idle animation + stylized name logo (above it, large)
   const choice = ROSTER[csCursor];
+  // preview art for whoever the cursor is on (idle only -- the full set loads on pick)
+  loadCharacterSprites(choice.key, true);
   const onLeft = csPhase === 'p1';
   const previewX = onLeft ? 90 : canvas.width - 90;
   // Base preview height for every character; CHAR_HEIGHT_SCALE corrects it per-character
@@ -158,3 +163,46 @@ function drawCharacterSelect() {
 // Slightly slower than a real 60fps rAF cadence -- uniformly slows every tick-based
 // system (movement, gravity, attack timers, animation frames) since they all advance
 // once per scheduled call here, without needing to touch each speed constant individually.
+
+// ---------- Pre-match loading ----------
+// Character sprites download on demand (see loadCharacterSprites() in fighter.js), so once
+// both fighters are chosen the match waits here until their art is in. Downloads start at the
+// moment each character is picked, so by the time the select voice line finishes this is
+// usually already done and the screen never shows.
+let matchLoadingActive = false;
+let matchLoadingTimer = 0;
+function startMatchWhenReady() {
+  currentStage = pickStageFor(p1Choice.key, p2Choice.key);
+  loadCharacterSprites(p1Choice.key);
+  loadStageAssets(currentStage);
+  loadCharacterSprites(p2Choice.key);
+  characterSelectActive = false;
+  matchLoadingActive = true;
+  matchLoadingTimer = 0;
+}
+
+function drawMatchLoading() {
+  matchLoadingTimer++;
+  const ready = characterSpritesReady(p1Choice.key) && characterSpritesReady(p2Choice.key) && stageAssetsReady(currentStage);
+  if (ready) {
+    matchLoadingActive = false;
+    resetRound();
+    return;
+  }
+  ctx.fillStyle = '#0b0b0e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('LOADING FIGHTERS' + '.'.repeat(1 + Math.floor(matchLoadingTimer / 16) % 3), canvas.width / 2, canvas.height / 2 - 30);
+  [[p1Choice, 0], [p2Choice, 1]].forEach(([choice, i]) => {
+    const pct = characterSpriteProgress(choice.key);
+    const w = 320, x = canvas.width / 2 - w / 2, y = canvas.height / 2 + 6 + i * 44;
+    ctx.fillStyle = '#aaa'; ctx.font = '13px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(choice.name, x, y - 2);
+    ctx.fillStyle = '#222'; ctx.fillRect(x, y + 4, w, 10);
+    ctx.fillStyle = choice.accent || '#ffd54a'; ctx.fillRect(x, y + 4, w * pct, 10);
+    ctx.strokeStyle = '#555'; ctx.strokeRect(x, y + 4, w, 10);
+  });
+  ctx.textAlign = 'left';
+}

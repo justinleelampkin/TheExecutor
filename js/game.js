@@ -69,14 +69,14 @@ function drawHUD() {
 
   // name logos, under each player's meter bar -- driven by actual character, not fixed side
   const logoH = 34;
-  const logoFor = spriteKey => (ROSTER.find(r => r.key === spriteKey) || {}).nameLogoImg || sethNameLogo;
+  const logoFor = spriteKey => (ROSTER.find(r => r.key === spriteKey) || {}).nameLogoImg;
   const p1Logo = logoFor(p1.spriteKey);
   const p2Logo = logoFor(p2.spriteKey);
-  if (p1Logo.complete && p1Logo.naturalWidth > 0) {
+  if (p1Logo && p1Logo.complete && p1Logo.naturalWidth > 0) {
     const w = logoH * (p1Logo.width / p1Logo.height);
     ctx.drawImage(p1Logo, 20, 58, w, logoH);
   }
-  if (p2Logo.complete && p2Logo.naturalWidth > 0) {
+  if (p2Logo && p2Logo.complete && p2Logo.naturalWidth > 0) {
     const w = logoH * (p2Logo.width / p2Logo.height);
     ctx.drawImage(p2Logo, canvas.width - 20 - w, 58, w, logoH);
   }
@@ -219,11 +219,17 @@ function tick() {
   if (titleScreenActive) { drawTitleScreen(); lastScreen = 'menu'; return; }
   if (modeSelectActive) { drawModeSelect(); lastScreen = 'menu'; return; }
   if (difficultySelectActive) { drawDifficultySelect(); lastScreen = 'menu'; return; }
+  if (matchLoadingActive) { drawMatchLoading(); lastScreen = 'menu'; return; }
   if (characterSelectActive) { drawCharacterSelect(); lastScreen = 'menu'; return; }
 
   if (paused) { lastScreen = 'paused'; return; }
   lastScreen = 'fight';
 
+  if (roundIntroActive) {
+    // frozen on the "Ready... Fight!" call -- see startRoundIntro() in combat.js
+    if (++roundIntroTicks > ROUND_INTRO_MAX_TICKS) roundIntroActive = false;
+    return;
+  }
   if (!roundOver) {
     if (hitStopFrames > 0) {
       hitStopFrames--;
@@ -232,6 +238,7 @@ function tick() {
       p1.update(1, p2);
       p2.update(1, p1);
       resolveCombat();
+      resolvePushboxes();
       roundTimer--;
       checkRoundEnd();
       lastTickAdvanced = true;

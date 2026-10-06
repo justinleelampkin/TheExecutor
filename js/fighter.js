@@ -50,6 +50,14 @@ const CHAR_ANIMS = {
   // Full moveset from user sheets (2026-10-03). jumpForward reuses the single jump sheet
   // (its 7th pose is a landing crouch the jump arc never reaches). Special is a
   // 2-row tornado/dust-wave sheet; victory is 2 rows with his dog joining in.
+  // Full moveset. jumpForward aliases jumpNeutral; special is a 10-frame multi-hit (ghost clones).
+  // Victory is a 16-frame dissolve into stars (4 source parts), defeat a collapse + dissolve.
+  echo: {
+    walk: 7, idle: 5, crouch: 7, jumpNeutral: 5, jumpForward: 5,
+    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
+    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 10, knockdown: 8,
+    victory: 16, block: 3, hitstun: 4,
+  },
   coyote: {
     walk: 7, idle: 5, crouch: 5, jumpNeutral: 7, jumpForward: 7,
     jumpLightAtk: 5, jumpHeavyAtk: 6, lightAtk: 6, heavyAtk: 6,
@@ -173,7 +181,7 @@ const SPECIAL_BOUNDARIES = {
 // out the windup/recovery the opponent gets to react to. See the matching `phi` branch
 // in attackHitbox() below, which has to track whatever this value is or the hitbox
 // window lands during the wrong pose.
-const SPECIAL_DUR = { seth: 72, liberty: 82, phi: 100 };
+const SPECIAL_DUR = { seth: 72, liberty: 82, phi: 100, echo: 80 };
 
 // Normal-attack timing, in ticks (48/sec). SF2-style: a short startup, a window where
 // the hitbox is live and the extended pose is held, then a recovery that carries the
@@ -203,6 +211,7 @@ const STRIKE_FRAMES = {
   rainwalker: { lightAtk: [2, 3], heavyAtk: [3, 3], crouchLightAtk: [3, 3], crouchHeavyAtk: [3, 3] },
   architech:  { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 3] },
   coyote:     { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [3, 3], crouchHeavyAtk: [4, 5] },
+  echo:       { lightAtk: [2, 3], heavyAtk: [2, 3], crouchLightAtk: [2, 3], crouchHeavyAtk: [2, 3] },
 };
 // How far each normal/jump attack's extended pose actually reaches, measured per move from
 // the sprite frames shown during its active ticks: forward distance from the character's
@@ -222,16 +231,26 @@ const ATTACK_REACH = {
   rainwalker: { lightAtk: 63.6, heavyAtk: 69.6, crouchLightAtk: 56.5, crouchHeavyAtk: 54.4, jumpLightAtk: 41.2, jumpHeavyAtk: 42.8 },
   architech:  { lightAtk: 55.1, heavyAtk: 60.2, crouchLightAtk: 60.6, crouchHeavyAtk: 59.6, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
   coyote:     { lightAtk: 61.6, heavyAtk: 93.7, crouchLightAtk: 60.4, crouchHeavyAtk: 69.7, jumpLightAtk: 67.8, jumpHeavyAtk: 77.6 },
+  echo:       { lightAtk: 63, heavyAtk: 79.7, crouchLightAtk: 61.6, crouchHeavyAtk: 96.2, jumpLightAtk: 75.9, jumpHeavyAtk: 57.5 },
 };
 // Ticks each walk-cycle frame is held. Walk speed is a flat 3.2px/tick, but the sprites'
 // stride is far longer than 3.2px x a 5-tick frame covers, so the feet skated. This is
 // ~0.45 x the widest foot spread (measured per character at in-game scale) / 3.2 for the
 // cycle length, clamped to a lively 6.4-8 ticks/frame. Default 5 = the old cadence.
 const WALK_TICKS_PER_FRAME = {
-  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8,
+  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8, echo: 8,
 };
 // Idle breathing: SF2 idles bob at roughly 8-10 ticks/frame; was 15.
 const IDLE_TICKS_PER_FRAME = 9;
+// How long (ticks) a button press is remembered while the fighter cant act yet -- see update().
+const INPUT_BUFFER_TICKS = 5;
+// How far a directional jump travels, in body widths (this.w x displayScale): forward is
+// long enough to cross over a standing opponent from point-blank, backward a bit shorter.
+const JUMP_FORWARD_WIDTHS = 2.0;
+const JUMP_BACK_WIDTHS = 1.5;
+// Yellow attack-hitbox outlines: on while developing locally, off on the deployed site;
+// H toggles it any time (input.js).
+let SHOW_HITBOXES = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 // Every character is rendered at a fixed 180px sprite height by default, but that
 // only lines characters up visually when their art fills a similar fraction of its
 // own canvas. Measured directly (idle-frame alpha bbox / canvas height, corrected
@@ -246,7 +265,7 @@ const IDLE_TICKS_PER_FRAME = 9;
 // "everyone else" at ~0.65 -- that comparison only checked a couple of characters;
 // measuring the full roster shows the opposite. Tune per-character, not by
 // touching the art.
-const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04 };
+const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04, echo: 1.04 };
 // Bumps every fighter's render size on a specific stage. Needed because a stage's front
 // layer has a hard floor on how small it can be drawn (it must still cover the canvas
 // width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
@@ -264,10 +283,18 @@ const STAGE_HEIGHT_SCALE = { bayou: 1.8, memorial: 1.8 };
 // on their last frame, but seth's and liberty's crouch sheets are ordered differently.
 const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 
-// Build SPRITES[charKey][animName] = { frames, imgs, count, loaded } for every
-// character/animation pair declared in CHAR_ANIMS. Adding a new character or a new
-// animation for an existing one is purely a data change here -- no new loading or
-// rendering code needed.
+// Animations that are the very same art as another one, so they share its frames (and its
+// download) instead of keeping a duplicate folder: { charKey: { alias: target } }. Today that's
+// jump-forward == jump-neutral for everyone but the Botanist.
+const ANIM_ALIAS = {};
+['seth', 'liberty', 'phi', 'frontman', 'ladyvoix', 'rainwalker', 'architech', 'coyote', 'echo']
+  .forEach(k => { ANIM_ALIAS[k] = { jumpForward: 'jumpNeutral' }; });
+
+// SPRITES[charKey][animName] = { frames, imgs, count, loaded, failed, started } for every
+// character/animation pair declared in CHAR_ANIMS. Nothing downloads at page load: the
+// Image objects are created empty and loadCharacterSprites() starts a character's
+// downloads when it's needed (hovered on the select screen, or picked). Adding a new
+// character or animation is purely a data change here.
 const SPRITES = {};
 Object.keys(CHAR_ANIMS).forEach(charKey => {
   const folder = CHAR_FOLDER[charKey] || charKey;
@@ -276,12 +303,65 @@ Object.keys(CHAR_ANIMS).forEach(charKey => {
     const subfolder = ANIM_FOLDER[animName];
     const frames = [];
     for (let i = 0; i < count; i++) frames.push(`assets/characters/${folder}/${subfolder}/${i}.webp`);
-    const imgs = frames.map(src => { const img = new Image(); img.src = src; return img; });
-    const entry = { frames, imgs, count, loaded: 0 };
-    imgs.forEach(img => img.onload = () => entry.loaded++);
-    SPRITES[charKey][animName] = entry;
+    SPRITES[charKey][animName] = { frames, imgs: frames.map(() => new Image()), count, loaded: 0, failed: 0, started: false };
+  });
+  // aliased animations point at the same entry object as their target
+  Object.entries(ANIM_ALIAS[charKey] || {}).forEach(([alias, target]) => {
+    if (SPRITES[charKey][target]) SPRITES[charKey][alias] = SPRITES[charKey][target];
   });
 });
+
+// Start downloading one animation's frames (no-op if already started).
+function loadAnimSprites(charKey, animName) {
+  const e = SPRITES[charKey] && SPRITES[charKey][animName];
+  if (!e || e.started) return;
+  e.started = true;
+  e.imgs.forEach((img, i) => {
+    img.onload = () => e.loaded++;
+    // a missing frame must not stall the pre-match loading screen forever
+    img.onerror = () => e.failed++;
+    img.src = e.frames[i];
+  });
+}
+
+// Which characters currently have sprites loaded (most recently used first). Keeping every
+// character in memory would put all of them (eventually 20+) back in RAM, so the
+// least-recently-used ones beyond SPRITE_CACHE_CHARS are released -- never the two
+// fighters in the current match or the two picks.
+const SPRITE_CACHE_CHARS = 4;
+const spriteLRU = [];
+function loadCharacterSprites(charKey, idleOnly) {
+  if (!SPRITES[charKey]) return;
+  const at = spriteLRU.indexOf(charKey);
+  if (at !== -1) spriteLRU.splice(at, 1);
+  spriteLRU.unshift(charKey);
+  loadAnimSprites(charKey, 'idle');
+  if (!idleOnly) Object.keys(SPRITES[charKey]).forEach(a => loadAnimSprites(charKey, a));
+  // evict
+  const keep = new Set([charKey, typeof p1 !== 'undefined' && p1.spriteKey, typeof p2 !== 'undefined' && p2.spriteKey,
+    typeof p1Choice !== 'undefined' && p1Choice && p1Choice.key, typeof p2Choice !== 'undefined' && p2Choice && p2Choice.key]);
+  for (let i = spriteLRU.length - 1; i >= 0 && spriteLRU.length > SPRITE_CACHE_CHARS; i--) {
+    if (!keep.has(spriteLRU[i])) unloadCharacterSprites(spriteLRU.splice(i, 1)[0]);
+  }
+}
+function unloadCharacterSprites(charKey) {
+  Object.values(SPRITES[charKey] || {}).forEach(e => {
+    e.imgs = e.frames.map(() => new Image()); // drop the decoded bitmaps
+    e.loaded = 0; e.failed = 0; e.started = false;
+  });
+}
+// true once every animation of the character has finished (or failed) loading
+function characterSpritesReady(charKey) {
+  const anims = SPRITES[charKey];
+  if (!anims) return false;
+  return Object.values(anims).every(e => e.started && e.loaded + e.failed >= e.count);
+}
+// 0..1 progress of a character's full download, for the loading screen
+function characterSpriteProgress(charKey) {
+  const seen = new Set(); let done = 0, total = 0;
+  Object.values(SPRITES[charKey] || {}).forEach(e => { if (seen.has(e)) return; seen.add(e); done += e.loaded + e.failed; total += e.count; });
+  return total ? done / total : 0;
+}
 
 // Maps a fighter state to its animation + frame-index function, for every state
 // whose sprite lookup is a plain one-animation-per-state affair (walk/idle/crouch use
@@ -329,6 +409,8 @@ class Fighter {
     // refresh rate isn't a multiple of the 48 tick/sec simulation
     this.prevX = this.x; this.prevY = this.y;
     this.hitShake = false; // set by resolveCombat() on a clean hit; shakes the sprite during hit-stop
+    this.bufLight = 0; this.bufHeavy = 0; // ticks left on a remembered button press (INPUT_BUFFER_TICKS)
+    this._lightPrev = false; this._heavyPrev = false;
     this.facing = opts.facing; // 1 = right, -1 = left
     this.w = 70; this.h = 150;
     this.color = opts.color;
@@ -386,6 +468,17 @@ class Fighter {
     return Math.max(bodyHalf + 24, reach * s + 14) - bodyHalf;
   }
 
+  // Body-sized hitbox for melee specials (PHI's tablet smash, the shared default special),
+  // reaching 70px past the leading edge: with pushboxes fighters can no longer
+  // interpenetrate, so a box exactly as wide as the body would only ever touch the
+  // opponent's hurtbox edge-to-edge and whiff.
+  meleeSpecialBox(s, dmg, kb) {
+    const reach = 70;
+    const bodyW = this.w * s;
+    const x = this.facing === 1 ? this.x - bodyW / 2 : this.x - bodyW / 2 - reach;
+    return { x, y: this.y - this.h*s, w: bodyW + reach, h: this.h*s, dmg, kb };
+  }
+
   attackHitbox() {
     const s = this.displayScale();
     if (this.state === 'jump' && this.airAttack) {
@@ -393,7 +486,11 @@ class Fighter {
       // The Coyote's heavy is a lunging wind-punch (see the lunge in update()), so its
       // hit window is later: it lands on the stretched-out frames of the lunge.
       const lunge = this.spriteKey === 'coyote' && this.airAttack === 'heavy';
-      if (this.airAttackTimer < (lunge ? 9 : 7) || this.airAttackTimer > (lunge ? 15 : 13)) return null;
+      // Echo's 5-frame jump attacks only reach their extended pose on frame 3 (ticks 12-15 of
+      // the 20-tick animation), so his window is centred there instead of the shared 7-13
+      const echoWin = this.spriteKey === 'echo';
+      const winStart = lunge ? 9 : echoWin ? 11 : 7, winEnd = lunge ? 15 : echoWin ? 16 : 13;
+      if (this.airAttackTimer < winStart || this.airAttackTimer > winEnd) return null;
       const isLight = this.airAttack === 'light'; // punch = weak
       const range = this.attackRange(isLight ? 'jumpLightAtk' : 'jumpHeavyAtk', isLight ? 60 : 78, s);
       const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
@@ -422,13 +519,34 @@ class Fighter {
         }
         return null;
       }
+      if (this.spriteKey === 'echo') {
+        // four-hit glitch combo: his ghost iterations rake in one after another (frames 2, 3-4
+        // and 6 of his 10 at 8 ticks/frame), then the original lunges through with the vortex
+        // strike (frame 7). Each window is its own hit; the last one carries the weight
+        // (hitStopFor() freezes longest on `last`). Reaches measured from the frames' tips.
+        const windows = [
+          { start: 16, end: 23, id: 'e1', dmg: 5, kb: 3, range: 100 },
+          { start: 30, end: 37, id: 'e2', dmg: 5, kb: 4, range: 105 },
+          { start: 46, end: 53, id: 'e3', dmg: 5, kb: 5, range: 110 },
+          { start: 58, end: 66, id: 'e4', dmg: 9, kb: 18, range: 150, last: true },
+        ];
+        for (const w of windows) {
+          if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
+            const range = w.range * s / 1.8; // tuned at the 1.8 stage scale
+            const bodyW = this.w * s;
+            const x = this.facing === 1 ? this.x - bodyW / 2 : this.x - bodyW / 2 - range;
+            return { x, y: this.y - this.h*s*0.95, w: bodyW + range, h: this.h*s*0.9, dmg: w.dmg, kb: w.kb, hitId: w.id, last: !!w.last };
+          }
+        }
+        return null;
+      }
       if (this.spriteKey === 'phi') {
         // his special plays out over SPECIAL_DUR.phi (100) rather than the shared
         // default (72), so the tablet-smash impact -- frame 5 of his 7 (re-extracted
         // from source, see CHAR_ANIMS.phi) -- lands around the ~71-84% mark, tick
         // 71-84 here.
         if (this.stateTimer < 71 || this.stateTimer > 84) return null;
-        return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: 20, kb: 20 };
+        return this.meleeSpecialBox(s, 20, 20);
       }
       if (this.spriteKey === 'ladyvoix') {
         // stationary sound-wave blast -- projects outward from her mic stand in her
@@ -484,7 +602,7 @@ class Fighter {
       }
       // active from the tail of the windup through the impact frame
       if (this.stateTimer < 30 || this.stateTimer > 50) return null;
-      return { x: this.x - (this.w*s)/2, y: this.y - this.h*s, w: this.w*s, h: this.h*s, dmg: 20, kb: 20 };
+      return this.meleeSpecialBox(s, 20, 20);
     }
     if (!['lightAtk','heavyAtk','crouchLightAtk','crouchHeavyAtk'].includes(this.state)) return null;
     // active frames window (see NORMAL_TIMING)
@@ -539,6 +657,20 @@ class Fighter {
     this.stateTimer++;
     const c = this.controls;
     const grounded = this.y >= GROUND_Y;
+
+    // Button presses are edge-detected every tick (not only while free) and remembered for
+    // INPUT_BUFFER_TICKS, so a press made during the last ticks of a recovery / landing /
+    // block fires the moment the fighter can act instead of being dropped -- SF5 documents
+    // the same kind of leniency. (This replaces the old _lightHeld flag, which only
+    // updated while free: a button held through an attack went stale and swallowed
+    // the first press afterwards.) Hitstun/knockdown don't buffer.
+    const lightEdge = !!keys[c.light] && !this._lightPrev;
+    const heavyEdge = !!keys[c.heavy] && !this._heavyPrev;
+    this._lightPrev = !!keys[c.light]; this._heavyPrev = !!keys[c.heavy];
+    if (!['hitstun','knockdown','victory'].includes(this.state)) {
+      if (lightEdge) this.bufLight = INPUT_BUFFER_TICKS;
+      if (heavyEdge) this.bufHeavy = INPUT_BUFFER_TICKS;
+    }
 
     // record directional inputs for special-move buffer (only when grounded & free)
     const free = ['idle','walk','crouch'].includes(this.state);
@@ -598,12 +730,23 @@ class Fighter {
           const maxVy = -Math.sqrt(2 * (0.63 * s) * maxRise);
           this.vy = Math.max(this.vy, maxVy); // vy is negative; smaller magnitude wins
           this.jumpDirectional = moveDir !== 0;
+          // Directional jumps travel a set number of body widths (not the 3.2px/tick walk
+          // speed they used to inherit, which only covered ~137px -- barely one body width,
+          // so with pushboxes a jump-in could never cross over). Distance = widths x
+          // body width, spread over this jump's actual hang time (it varies when the
+          // rise cap above kicks in), so a forward jump from point-blank clears the
+          // opponent and lands behind them, and one from mid-range lands on top of them.
+          if (moveDir !== 0) {
+            const hangTicks = 2 * Math.abs(this.vy) / (0.63 * s);
+            const widths = moveDir === this.facing ? JUMP_FORWARD_WIDTHS : JUMP_BACK_WIDTHS;
+            this.vx = moveDir * widths * this.w * s / hangTicks;
+          }
           this.airAttack = null;
           this.airAttackUsed = false;
           this.startState('jump');
         }
 
-        if (keys[c.light] && !this._lightHeld) {
+        if (this.bufLight > 0) {
           const seqDone = bufferHasSequence(this.inputBuf, ['D','B']) || bufferHasSequence(this.inputBuf, ['D','F']);
           if (seqDone && this.meter >= SPECIAL_METER_COST && this.anim('special')) {
             this.meter -= SPECIAL_METER_COST;
@@ -617,8 +760,9 @@ class Fighter {
             playWhiffSound();
           }
           this.inputBuf.length = 0;
+          this.bufLight = 0; this.bufHeavy = 0; // one action per tick: a light that fires eats a simultaneous heavy
         }
-        if (keys[c.heavy] && !this._heavyHeld) {
+        if (this.bufHeavy > 0) {
           if (keys[c.down]) {
             this.startState('crouchHeavyAtk', NORMAL_TIMING.crouchHeavyAtk.dur);
             playWhiffSound();
@@ -626,16 +770,19 @@ class Fighter {
             this.startState('heavyAtk', NORMAL_TIMING.heavyAtk.dur);
             playWhiffSound();
           }
+          this.bufLight = 0; this.bufHeavy = 0;
         }
       } else if (this.state === 'jump' && !this.airAttack && !this.airAttackUsed) {
         // jump attacks: punch (light) or kick (heavy), one per jump, doesn't interrupt the jump arc
-        if (keys[c.light] && !this._lightHeld) {
+        if (this.bufLight > 0) {
+          this.bufLight = 0;
           this.airAttack = 'light';
           this.airAttackTimer = 0;
           this.airAttackUsed = true;
           this.airAttackHitLock = false;
           playWhiffSound();
-        } else if (keys[c.heavy] && !this._heavyHeld) {
+        } else if (this.bufHeavy > 0) {
+          this.bufHeavy = 0;
           this.airAttack = 'heavy';
           this.airAttackTimer = 0;
           this.airAttackUsed = true;
@@ -643,9 +790,11 @@ class Fighter {
           playWhiffSound();
         }
       }
-      this._lightHeld = keys[c.light];
-      this._heavyHeld = keys[c.heavy];
     }
+
+    // age the press buffers (consumed ones were already zeroed above)
+    if (this.bufLight > 0) this.bufLight--;
+    if (this.bufHeavy > 0) this.bufHeavy--;
 
     // The Coyote's jumping heavy strike is a forward lunge on a gust of wind: burst
     // forward through the strike, then hand back whatever air speed the jump had.
@@ -690,6 +839,10 @@ class Fighter {
         // 26-75 at 4.5, just compressed along with SPECIAL_DUR.liberty)
         const dashing = this.stateTimer >= 22 && this.stateTimer < 63;
         this.vx = dashing ? this.facing * 5.4 : 0;
+      } else if (this.spriteKey === 'echo') {
+        // the original lunges forward through the final strike (frames 5-7), ~100px
+        const dashing = this.stateTimer >= 40 && this.stateTimer < 64;
+        this.vx = dashing ? this.facing * 4.2 : 0;
       } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth' || this.spriteKey === 'coyote') {
         // ranged specials (soundwave blast / water-bear summon / thrown vinyl disc /
         // charged energy blast) are stationary -- the hit reaches out on its own
@@ -774,6 +927,7 @@ class Fighter {
   }
 
   takeHit(dmg, kb, dirFrom) {
+    this.bufLight = 0; this.bufHeavy = 0; // a hit interrupts any remembered press
     this.hp = Math.max(0, this.hp - dmg);
     this.vx = dirFrom * kb;
     this.meter = Math.min(this.maxMeter, this.meter + dmg * 0.5);
@@ -965,7 +1119,7 @@ class Fighter {
 
     // attack hitbox debug (visualize active frames as thin outline)
     const hb = this.attackHitbox();
-    if (hb) {
+    if (hb && SHOW_HITBOXES) {
       ctx.strokeStyle = 'rgba(255,255,0,0.8)';
       ctx.strokeRect(hb.x, hb.y, hb.w, hb.h);
     }
@@ -1079,13 +1233,16 @@ class CPUController {
 
     const params = this.params();
     const dist = Math.abs(o.x - f.x);
+    // pushboxes keep bodies apart, so every range below is measured from the distance at which
+    // the two pushboxes touch (the old fixed numbers assumed fighters could stand on each other)
+    const touch = (f.w * f.displayScale() + o.w * o.displayScale()) / 2;
     const dir = this.dirToOpp();
     const dirAction = dir === 1 ? { right: true } : { left: true };
     const awayAction = dir === 1 ? { left: true } : { right: true };
 
     // defensive reaction: opponent is mid-swing and close enough to matter
     const oppAttacking = ['lightAtk', 'heavyAtk', 'crouchLightAtk', 'crouchHeavyAtk', 'special'].includes(o.state);
-    if (oppAttacking && dist < 170 && !this.reacting) {
+    if (oppAttacking && dist < touch + 110 && !this.reacting) {
       this.reacting = true;
       this.reactDelay = params.reactionTicks;
     }
@@ -1106,12 +1263,12 @@ class CPUController {
     }
 
     // pick a new intent based on spacing
-    if (dist > 230) {
-      if (dist < 300 && Math.random() < params.jumpAttackChance) { this.startJumpAttackSequence(); return; }
+    if (dist > touch + 170) {
+      if (dist < touch + 240 && Math.random() < params.jumpAttackChance) { this.startJumpAttackSequence(); return; }
       this.setIntent('approach', 14 + Math.floor(Math.random() * 10));
       return;
     }
-    if (dist > 100) {
+    if (dist > touch + 60) {
       const roll = Math.random();
       if (Math.random() < params.jumpAttackChance) this.startJumpAttackSequence();
       else if (f.meter >= SPECIAL_METER_COST && roll < params.specialChance) this.startSpecialSequence();

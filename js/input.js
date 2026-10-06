@@ -9,6 +9,8 @@ window.addEventListener('keydown', e => {
   // still redrawing (see the `paused` branch in game.js's renderFight()) so a pose stays on
   // screen for screenshotting sprite issues instead of the canvas going blank.
   if (e.code === 'Space') { paused = !paused; return; }
+  // H toggles the yellow attack-hitbox outlines (on by default only when run locally)
+  if (e.code === 'KeyH') { SHOW_HITBOXES = !SHOW_HITBOXES; return; }
   if (modeSelectActive) {
     if (e.code === 'Digit1') { playMenuConfirmSound(); vsCPU = true; modeSelectActive = false; difficultySelectActive = true; }
     else if (e.code === 'Digit2') { playMenuConfirmSound(); vsCPU = false; modeSelectActive = false; characterSelectActive = true; csPhase = 'p1'; csCursor = 0; playCharacterSelectMusic(); }
@@ -30,16 +32,15 @@ window.addEventListener('keydown', e => {
       if (csPhase === 'p1') {
         p1Choice = ROSTER[csCursor];
         applyRosterChoice(p1, p1Choice);
+        loadCharacterSprites(p1Choice.key); // start downloading now, under the voice line
+        if (vsCPU) loadCharacterSprites((ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice).key);
         const voice = playCharacterSelectVoice(p1);
         const proceed = () => {
           csAwaitingVoice = false;
           if (vsCPU) {
-            const other = ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice;
-            p2Choice = other;
+            p2Choice = ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice;
             applyRosterChoice(p2, p2Choice);
-            characterSelectActive = false;
-            currentStage = pickStageFor(p1Choice.key, p2Choice.key);
-            resetRound();
+            startMatchWhenReady();
           } else {
             csPhase = 'p2';
             csCursor = 0;
@@ -50,12 +51,11 @@ window.addEventListener('keydown', e => {
       } else {
         p2Choice = ROSTER[csCursor];
         applyRosterChoice(p2, p2Choice);
+        loadCharacterSprites(p2Choice.key); // start downloading now, under the voice line
         const voice = playCharacterSelectVoice(p2);
         const proceed = () => {
           csAwaitingVoice = false;
-          characterSelectActive = false;
-          currentStage = pickStageFor(p1Choice.key, p2Choice.key);
-          resetRound();
+          startMatchWhenReady();
         };
         if (voice) { csAwaitingVoice = true; voice.addEventListener('ended', proceed, { once: true }); }
         else proceed();

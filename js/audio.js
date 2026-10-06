@@ -104,8 +104,19 @@ function playFootstepSound() {
   playSfx(FOOTSTEP_SOUND);
 }
 
-function playReadyFightSound() {
-  playSfx(READY_FIGHT_SOUND);
+// The "Ready... Fight!" call at the start of every round. Calls onDone once it has finished
+// playing -- or immediately if it can't play at all (blocked autoplay, missing file) -- so
+// the round never stays frozen waiting on audio that isn't coming (see roundIntroActive in
+// game.js, which holds the fighters still until this fires).
+function playReadyFightSound(onDone) {
+  const sfx = new Audio(READY_FIGHT_SOUND);
+  sfx.volume = SFX_VOLUME;
+  let done = false;
+  const finish = () => { if (done) return; done = true; if (onDone) onDone(); };
+  sfx.addEventListener('ended', finish, { once: true });
+  sfx.addEventListener('error', finish, { once: true });
+  sfx.play().catch(finish);
+  return sfx;
 }
 
 function playVictorySound() {

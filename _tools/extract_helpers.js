@@ -70,7 +70,7 @@ window.planPosesCore=(d,n,rows=1,thresh=60,coreThresh=200,fx=null)=>{
  for(let qi=0;qi<q.length;qi++){ const c=q[qi]; const cy=(c/w)|0,cx=c%w; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=cx+dx,ny=cy+dy; if(nx<0||ny<0||nx>=w||ny>=h)continue; const ni=ny*w+nx; if(!own[ni]&&A[ni*4+3]>thresh&&(fx==='alpha'?A[ni*4+3]>235:!(fx==='left'&&isCream(ni)))){ own[ni]=own[c]; q.push(ni);} } }
  // fx=left: wind/dust trails FORWARD of its owner, so unclaimed (cream) pixels go to the pose whose core is the nearest to their left in the same row
  if(fx==='alpha'){ let fr=q.slice(); for(let it=0;it<3;it++){ const nx2=[]; for(const c of fr){ const cy=(c/w)|0,cx=c%w; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=cx+dx,ny=cy+dy; if(nx<0||ny<0||nx>=w||ny>=h)continue; const ni=ny*w+nx; if(!own[ni]&&A[ni*4+3]>thresh){ own[ni]=own[c]; nx2.push(ni); q.push(ni);} } } fr=nx2; } }
- if(fx==='alpha'){ const seen=new Uint8Array(w*h); const rowOf2=y=>Math.min(rows-1,Math.floor(y/rh)); for(let s0=0;s0<w*h;s0++){ if(own[s0]||seen[s0]||A[s0*4+3]<=thresh) continue; const comp=[s0]; seen[s0]=1; let sx=0,sy=0; for(let ci=0;ci<comp.length;ci++){ const c=comp[ci]; const cy=(c/w)|0,cx=c%w; sx+=cx; sy+=cy; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=cx+dx,ny=cy+dy; if(nx<0||ny<0||nx>=w||ny>=h)continue; const ni=ny*w+nx; if(!own[ni]&&!seen[ni]&&A[ni*4+3]>thresh){ seen[ni]=1; comp.push(ni);} } } const mx=sx/comp.length,my=sy/comp.length; const r=rowOf2(my); const rp=poses.filter(p=>Math.floor(p.i/cols)===r); let best=rp[0]; for(const p of rp){ if(cores[p.core-1].cx<=mx) best=p; } for(const c of comp){ own[c]=best.i+1; q.push(c); } } }
+ if(fx==='alpha'){ const seen=new Uint8Array(w*h); const rowOf2=y=>Math.min(rows-1,Math.floor(y/rh)); for(let s0=0;s0<w*h;s0++){ if(own[s0]||seen[s0]||A[s0*4+3]<=thresh) continue; const comp=[s0]; seen[s0]=1; let sx=0,sy=0; for(let ci=0;ci<comp.length;ci++){ const c=comp[ci]; const cy=(c/w)|0,cx=c%w; sx+=cx; sy+=cy; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=cx+dx,ny=cy+dy; if(nx<0||ny<0||nx>=w||ny>=h)continue; const ni=ny*w+nx; if(!own[ni]&&!seen[ni]&&A[ni*4+3]>thresh){ seen[ni]=1; comp.push(ni);} } } const mx=sx/comp.length,my=sy/comp.length; const r=rowOf2(my); const rp=poses.filter(p=>Math.floor(p.i/cols)===r); let best=rp[0]; if(window._fxRight){ best=rp[rp.length-1]; for(let q2=rp.length-1;q2>=0;q2--){ if(cores[rp[q2].core-1].cx>=mx) best=rp[q2]; } } else { for(const p of rp){ if(cores[p.core-1].cx<=mx) best=p; } } for(const c of comp){ own[c]=best.i+1; q.push(c); } } }
  if(fx==='left'){ const rowOf=y=>Math.min(rows-1,Math.floor(y/rh)); for(let y=0;y<h;y++){ const r=rowOf(y); const rp=poses.filter(p=>Math.floor(p.i/cols)===r); for(let x=0;x<w;x++){ const i=y*w+x; if(own[i]||A[i*4+3]<=thresh) continue; let best=rp[0]; for(const p of rp){ if(cores[p.core-1].cx<=x) best=p; } own[i]=best.i+1; q.push(i); } } }
  for(const s of q){ const o=own[s]-1; const x=s%w,y=(s/w)|0; const m=poses[o]; if(!m.bbox)m.bbox={minX:x,maxX:x,minY:y,maxY:y}; else{ if(x<m.bbox.minX)m.bbox.minX=x; if(x>m.bbox.maxX)m.bbox.maxX=x; if(y<m.bbox.minY)m.bbox.minY=y; if(y>m.bbox.maxY)m.bbox.maxY=y; } }
  // leftover islands (not reached from any core)
@@ -109,3 +109,22 @@ window.runTask4=async(base,task,dstRoot)=>{
  for(let i=0;i<crops.length;i++){ const {cr,cW,cH}=crops[i]; const nc=document.createElement('canvas'); nc.width=cW+12; nc.height=fixedH; nc.getContext('2d').drawImage(cr,6,fixedH-1-cH);
   const blob=await new Promise(r=>nc.toBlob(r,'image/webp')); await (await fetch('/save?path='+dstRoot+'/'+task.dest+'/'+i+'.webp',{method:'POST',body:await blob.arrayBuffer()})).text(); fr.push((cH/fixedH).toFixed(2)+'/'+cW); }
  return task.dest+': cuts '+cuts.slice(1,-1).join(',')+' fixedH '+fixedH+(fixedH!==task.fH?' (raised from '+task.fH+')':'')+' ['+fr.join(' ')+']'; };
+
+// ---- Asset budget tools (run in the game page) ----
+// reencodeChar('phi') re-saves a character's frames as lossy webp at quality 0.88, but only where
+// that saves >= 30% (older exports were saved near-lossless at 3-4x the size, with no visible
+// difference at game scale). Safe to re-run: already-small files are left alone. Do one
+// character per call (the page console times out around ~45s).
+window.reencodeChar=async(k,q=0.88,minSave=0.3)=>{ const dir=CHAR_FOLDER[k]||k; let before=0, after=0, changed=0, n=0;
+  for(const [a,count] of Object.entries(CHAR_ANIMS[k])){ if(ANIM_ALIAS[k]&&ANIM_ALIAS[k][a]) continue; for(let i=0;i<count;i++){ const p=`assets/characters/${dir}/${ANIM_FOLDER[a]}/${i}.webp`;
+    try{ const orig=await (await fetch('/'+p+'?t='+Date.now(),{cache:'no-store'})).arrayBuffer(); n++; before+=orig.byteLength;
+      const url=URL.createObjectURL(new Blob([orig],{type:'image/webp'})); const im=await new Promise((res,rej)=>{const e=new Image(); e.onload=()=>res(e); e.onerror=rej; e.src=url;}); URL.revokeObjectURL(url);
+      const c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight; c.getContext('2d').drawImage(im,0,0);
+      const blob=await new Promise(r=>c.toBlob(r,'image/webp',q));
+      if(blob.size<orig.byteLength*(1-minSave)){ await (await fetch('/save?path='+p,{method:'POST',body:await blob.arrayBuffer()})).text(); after+=blob.size; changed++; } else after+=orig.byteLength;
+    }catch(e){} } }
+  return `${k}: ${n} files, ${changed} re-encoded, ${(before/1048576).toFixed(1)}MB -> ${(after/1048576).toFixed(1)}MB`; };
+// assetBudget() reports the download size of every character (what a match using them costs).
+window.assetBudget=async()=>{ const rows=[]; for(const k of Object.keys(CHAR_ANIMS)){ const dir=CHAR_FOLDER[k]||k; let bytes=0,files=0;
+  for(const [a,count] of Object.entries(CHAR_ANIMS[k])){ if(ANIM_ALIAS[k]&&ANIM_ALIAS[k][a]) continue; for(let i=0;i<count;i++){ try{ const r=await fetch(`/assets/characters/${dir}/${ANIM_FOLDER[a]}/${i}.webp`,{method:'HEAD',cache:'no-store'}); bytes+=+r.headers.get('content-length')||0; files++; }catch(e){} } }
+  rows.push(`${k}: ${files} files ${(bytes/1048576).toFixed(1)} MB`); } return rows.join('\n'); };

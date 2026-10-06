@@ -5,6 +5,13 @@ Add-Type -AssemblyName System.Web
 
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$Port/")
+# time out stalled connections (an aborted POST body or an idle keep-alive used to wedge this
+# single-threaded loop until the process was restarted)
+try {
+  $tm = $listener.TimeoutManager
+  $tm.EntityBody = [TimeSpan]::FromSeconds(15); $tm.DrainEntityBody = [TimeSpan]::FromSeconds(15)
+  $tm.RequestQueue = [TimeSpan]::FromSeconds(15); $tm.IdleConnection = [TimeSpan]::FromSeconds(30); $tm.HeaderWait = [TimeSpan]::FromSeconds(15)
+} catch { Write-Host "timeout manager unavailable: $_" }
 $listener.Start()
 Write-Host "Serving $Root on http://localhost:$Port/  (Ctrl+C to stop)"
 
@@ -51,6 +58,6 @@ while ($listener.IsListening) {
     Write-Host "ERROR: $_"
     $res.StatusCode = 500
   } finally {
-    $res.OutputStream.Close()
+    try { $res.OutputStream.Close() } catch { Write-Host "close failed: $_" }
   }
 }

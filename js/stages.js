@@ -56,7 +56,7 @@ const skyFrameSrcs = [
   "assets/stages/dc-skyline-lightning-1.webp",
   "assets/stages/dc-skyline-lightning-2.webp"
 ];
-const skyFrames = skyFrameSrcs.map(src => { const i = new Image(); i.src = src; return i; });
+const skyFrames = skyFrameSrcs.map(() => new Image()); // src is set by loadStageAssets()
 const SKY_BASE_FRAME = 0; // the skyline/buildings are locked to this single frame -- never swapped, so nothing shifts
 let skyTimer = 0;
 let skyFlashing = false;
@@ -80,7 +80,6 @@ function updateSky() {
 
 // Front layer: the colonnade/Lincoln statue, transparent gaps show the skyline behind (nearer, moves more)
 const bgFrontImg = new Image();
-bgFrontImg.src = "assets/stages/dc-memorial-front.webp";
 // alignment: source-image y-coordinate of the plaza spot fighters should stand on --
 // adjust if fighters look like they're floating or sunk into the floor
 const MEMORIAL_STAND_Y_SOURCE = 830;
@@ -112,7 +111,6 @@ const BAYOU_FRONT_SCALE = 0.685;
 const BAYOU_FRONT_DRAW_W = BAYOU_FRONT_SRC_W * BAYOU_FRONT_SCALE;
 const BAYOU_FRONT_DRAW_H = BAYOU_FRONT_SRC_H * BAYOU_FRONT_SCALE;
 const bayouFrontImg = new Image();
-bayouFrontImg.src = "assets/stages/bayou/front.webp";
 const BAYOU_STAND_Y_SOURCE = 830; // same convention as MEMORIAL_STAND_Y_SOURCE -- tune if fighters look off the floor
 const BAYOU_DRAW_Y = (GROUND_Y + 20) - (BAYOU_STAND_Y_SOURCE * BAYOU_FRONT_SCALE);
 
@@ -143,7 +141,7 @@ const BAYOU_BACK_TARGET_SCREEN_Y = BAYOU_DRAW_Y
 const BAYOU_BACK_DRAW_Y = BAYOU_BACK_TARGET_SCREEN_Y - BAYOU_BACK_GATOR_SRC_Y * BAYOU_BACK_SCALE;
 
 const bayouBackSrcs = [1, 2, 3, 4, 5].map(n => `assets/stages/bayou/back-${n}.webp`);
-const bayouBackFrames = bayouBackSrcs.map(src => { const i = new Image(); i.src = src; return i; });
+const bayouBackFrames = bayouBackSrcs.map(() => new Image());
 let bayouBackTimer = 0;
 let bayouBackFrame = 0;
 
@@ -171,7 +169,7 @@ const BAYOU_BAND_SCALE_K = 0.45;
 // layer for the riser's top edge, rather than to the main floor line.
 const BAYOU_BAND_ANCHOR_SRC = { x: 300, y: 548 };
 const bayouBandSrcs = [1, 2, 3, 4].map(n => `assets/stages/bayou/band-${n}.webp`);
-const bayouBandFrames = bayouBandSrcs.map(src => { const i = new Image(); i.src = src; return i; });
+const bayouBandFrames = bayouBandSrcs.map(() => new Image());
 let bayouBandTimer = 0;
 let bayouBandFrame = 0;
 // Band frames' opaque bounding box, computed once per image on load (needed to crop+scale
@@ -180,6 +178,33 @@ const bayouBandBboxes = bayouBandFrames.map(() => null);
 bayouBandFrames.forEach((img, i) => {
   img.addEventListener('load', () => { bayouBandBboxes[i] = bboxOfImage(img); });
 });
+
+// ---- On-demand stage loading ----
+// A stage's images only download when a match on it is about to start (startMatchWhenReady()
+// in characterSelect.js), not at page load -- with more levels coming, loading every stage up
+// front would grow the first-visit download with each one. To add a stage: create its Image
+// objects like the ones above (no src), list them here with their file, and add the stage to
+// STAGE_FOR_CHAR / pickStageFor().
+const STAGE_ASSETS = {
+  memorial: [
+    [bgFrontImg, "assets/stages/dc-memorial-front.webp"],
+    ...skyFrames.map((im, i) => [im, skyFrameSrcs[i]]),
+  ],
+  bayou: [
+    [bayouFrontImg, "assets/stages/bayou/front.webp"],
+    ...bayouBackFrames.map((im, i) => [im, bayouBackSrcs[i]]),
+    ...bayouBandFrames.map((im, i) => [im, bayouBandSrcs[i]]),
+  ],
+};
+const stageLoadStarted = {};
+function loadStageAssets(name) {
+  if (stageLoadStarted[name] || !STAGE_ASSETS[name]) return;
+  stageLoadStarted[name] = true;
+  STAGE_ASSETS[name].forEach(([img, src]) => { img.src = src; });
+}
+function stageAssetsReady(name) {
+  return !!stageLoadStarted[name] && STAGE_ASSETS[name].every(([img]) => img.complete);
+}
 
 function updateBayouAnim() {
   bayouBackTimer++;
