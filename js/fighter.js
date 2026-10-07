@@ -224,10 +224,10 @@ const STRIKE_FRAMES = {
 const ATTACK_REACH = {
   seth:       { lightAtk: 36.5, heavyAtk: 53.6, crouchLightAtk: 63,   crouchHeavyAtk: 65.4, jumpLightAtk: 50.9, jumpHeavyAtk: 53.1 },
   liberty:    { lightAtk: 54,   heavyAtk: 61,   crouchLightAtk: 46.8, crouchHeavyAtk: 71.9, jumpLightAtk: 61.2, jumpHeavyAtk: 70.9 },
-  phi:        { lightAtk: 83.2, heavyAtk: 70.7, crouchLightAtk: 49.6, crouchHeavyAtk: 51.8, jumpLightAtk: 62.4, jumpHeavyAtk: 80.5 },
-  botanist:   { lightAtk: 47.8, heavyAtk: 62.3, crouchLightAtk: 46,   crouchHeavyAtk: 49.3, jumpLightAtk: 62.3, jumpHeavyAtk: 62.3 },
+  phi:        { lightAtk: 98.3, heavyAtk: 79.3, crouchLightAtk: 49.6, crouchHeavyAtk: 51.8, jumpLightAtk: 75.3, jumpHeavyAtk: 74.1 },
+  botanist:   { lightAtk: 47.8, heavyAtk: 103.5, crouchLightAtk: 66.8, crouchHeavyAtk: 71.4, jumpLightAtk: 80.3, jumpHeavyAtk: 77.9 },
   frontman:   { lightAtk: 51.7, heavyAtk: 52.5, crouchLightAtk: 62.3, crouchHeavyAtk: 62.3, jumpLightAtk: 52.3, jumpHeavyAtk: 58 },
-  ladyvoix:   { lightAtk: 60.4, heavyAtk: 66,   crouchLightAtk: 88.1, crouchHeavyAtk: 69.8, jumpLightAtk: 84.7, jumpHeavyAtk: 104.1 },
+  ladyvoix:   { lightAtk: 60.4, heavyAtk: 86.4, crouchLightAtk: 88.1, crouchHeavyAtk: 69.8, jumpLightAtk: 118.8, jumpHeavyAtk: 125.3 },
   rainwalker: { lightAtk: 63.6, heavyAtk: 69.6, crouchLightAtk: 56.5, crouchHeavyAtk: 54.4, jumpLightAtk: 41.2, jumpHeavyAtk: 42.8 },
   architech:  { lightAtk: 55.1, heavyAtk: 60.2, crouchLightAtk: 60.6, crouchHeavyAtk: 59.6, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
   coyote:     { lightAtk: 61.6, heavyAtk: 93.7, crouchLightAtk: 60.4, crouchHeavyAtk: 69.7, jumpLightAtk: 67.8, jumpHeavyAtk: 77.6 },
@@ -281,6 +281,14 @@ const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker:
 const STAGE_HEIGHT_SCALE = { bayou: 1.8, memorial: 1.8 };
 // Which crouch frame is the settled "deepest" pose to hold on -- most characters hold
 // on their last frame, but seth's and liberty's crouch sheets are ordered differently.
+// Per-animation draw-size multiplier: when an animation was re-extracted onto a taller canvas than
+// it used to have (to stop tall effects being clipped), its frames shrink by canvasH_old/canvasH_new
+// when stretched to the standard draw height -- this multiplier (new/old) restores the body size.
+// Written by _tools repair runs; characters/anims not listed use 1.
+const ANIM_DRAW_SCALE = {
+  ladyvoix: { jumpLightAtk: 1.0205, jumpHeavyAtk: 1.0062, heavyAtk: 1.0157, special: 1.1228, knockdown: 1.002 },
+  phi: { jumpLightAtk: 1.0568, jumpHeavyAtk: 1.1204, heavyAtk: 1.0076 },
+};
 const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 
 // Animations that are the very same art as another one, so they share its frames (and its
@@ -965,8 +973,11 @@ class Fighter {
     return typeof anim === 'function' ? anim(this) : anim;
   }
 
-  drawSpriteFrame(ctx, img) {
+  drawSpriteFrame(ctx, img, animName) {
     let drawH = 180 * (CHAR_HEIGHT_SCALE[this.spriteKey] || 1) * (STAGE_HEIGHT_SCALE[currentStage] || 1);
+    // an animation re-exported with a taller canvas (to fit tall effects) keeps its body size via this
+    const animMult = ANIM_DRAW_SCALE[this.spriteKey] && ANIM_DRAW_SCALE[this.spriteKey][animName];
+    if (animMult) drawH *= animMult;
     // Experimental: test whether a flat 20% bump reads as "right-sized" for his
     // victory pose specifically -- victory has no hitbox/physics, so it's safe to
     // scale only the render here without touching displayScale().
@@ -1076,7 +1087,7 @@ class Fighter {
     if (this.hasSprite && this.state === 'jump' && this.airAttack) {
       const animName = this.airAttack === 'light' ? 'jumpLightAtk' : 'jumpHeavyAtk';
       if (this.animReady(animName)) {
-        this.drawSpriteFrame(ctx, this.anim(animName).imgs[this.getAirAttackFrameIndex(animName)]);
+        this.drawSpriteFrame(ctx, this.anim(animName).imgs[this.getAirAttackFrameIndex(animName)], animName);
         drawn = true;
       }
     } else if (this.hasSprite && this.state === 'jump') {
@@ -1087,13 +1098,13 @@ class Fighter {
         // clamp to what actually exists so it holds on the last frame instead of
         // indexing past the array and crashing the render loop.
         const frameIdx = Math.min(this.anim(animName).count - 1, this.getJumpFrameIndex());
-        this.drawSpriteFrame(ctx, this.anim(animName).imgs[frameIdx]);
+        this.drawSpriteFrame(ctx, this.anim(animName).imgs[frameIdx], animName);
         drawn = true;
       }
     } else if (this.hasSprite && SIMPLE_STATE_ANIM[this.state] && this.animReady(this.resolveAnimName(SIMPLE_STATE_ANIM[this.state].anim))) {
       const cfg = SIMPLE_STATE_ANIM[this.state];
       const animName = this.resolveAnimName(cfg.anim);
-      this.drawSpriteFrame(ctx, this.anim(animName).imgs[cfg.frame(this)]);
+      this.drawSpriteFrame(ctx, this.anim(animName).imgs[cfg.frame(this)], animName);
       drawn = true;
     }
 
