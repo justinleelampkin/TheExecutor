@@ -84,7 +84,7 @@ window.cropPoseCore=(d,p,lbl,own)=>{const {imgData,w}=d;const m=p.bbox;const ex=
 // like runTask2 but with the core-seeded planner
 window.runTask3=async(base,task,dstRoot)=>{
  const prepared=[];for(const [file,n,rows] of task.sheets){const d=await window.getImgData2(base+file);const plan=window.planPosesCore(d,n,rows||1,task.thresh||60,task.core||200,task.fx||null);for(const p of plan.poses)prepared.push({d,p,lbl:plan.lbl,own:plan.own});}
- const crops=prepared.map(({d,p,lbl,own})=>window.cropPoseCore(d,p,lbl,own));const maxH=Math.max(...crops.map(c=>c.cH));
+ const crops=prepared.map(({d,p,lbl,own})=>{const cc=window.cropPoseCore(d,p,lbl,own); if(task.keepNear!==undefined){ cc.cr.getContext("2d"); } return cc;});const maxH=Math.max(...crops.map(c=>c.cH));
  const fixedH=Math.max(task.fH,maxH+1+2);const fr=[];
  for(let i=0;i<crops.length;i++){const {cr,cW,cH}=crops[i];const nc=document.createElement('canvas');const sc=task.scales?task.scales[i]:1;nc.width=Math.round(cW*sc)+12;nc.height=fixedH;nc.getContext('2d').drawImage(cr,6,fixedH-1-cH*sc,cW*sc+1,cH*sc+1);
   const blob=await new Promise(r=>nc.toBlob(r,'image/webp'));await (await fetch('/save?path='+dstRoot+'/'+task.dest+'/'+((task.start||0)+i)+'.webp',{method:'POST',body:await blob.arrayBuffer()})).text();fr.push((cH/fixedH).toFixed(2)+(prepared[i].p.extras.length?'+'+prepared[i].p.extras.length:'')+'/'+cW);}
@@ -98,7 +98,8 @@ window.runTask4=async(base,task,dstRoot)=>{
  const [file]=task.sheets[0]; const d=await window.getImgData2(base+file); const {w,h,imgData}=d; const A=imgData.data; const thresh=task.thresh||60;
  const cuts=[0]; for(const [lo,hi] of task.windows){ let best=lo,bc=1e9; for(let x=lo;x<=hi;x++){ let cnt=0; for(let y=0;y<h;y++) if(A[(y*w+x)*4+3]>128) cnt++; if(cnt<bc||(cnt===bc&&Math.abs(x-(lo+hi)/2)<Math.abs(best-(lo+hi)/2))){bc=cnt;best=x;} } cuts.push(best); } cuts.push(w);
  const crops=[]; const info=[];
- for(let i=0;i<cuts.length-1;i++){ const x0=cuts[i],x1=cuts[i+1]; const sw=x1-x0; const mask=new Uint8Array(sw*h); for(let y=0;y<h;y++)for(let x=0;x<sw;x++) if(A[(y*w+x0+x)*4+3]>thresh) mask[y*sw+x]=1;
+ const grabs=task.grabs||[]; const inG=(j,xx,y)=>grabs.some(g=>g[0]===j&&xx>=g[1]&&xx<=g[3]&&y>=g[2]&&y<=g[4]); const inOther=(j,xx,y)=>grabs.some(g=>g[0]!==j&&xx>=g[1]&&xx<=g[3]&&y>=g[2]&&y<=g[4]);
+ for(let i=0;i<cuts.length-1;i++){ const x0=cuts[i],x1base=cuts[i+1]; const x1=Math.min(w,Math.max(x1base,...grabs.filter(g=>g[0]===i).map(g=>g[3]+1))); const sw=x1-x0; const mask=new Uint8Array(sw*h); for(let y=0;y<h;y++)for(let x=0;x<sw;x++){ const xx=x0+x; if(A[(y*w+xx)*4+3]>thresh && (xx<x1base||inG(i,xx,y)) && !inOther(i,xx,y)) mask[y*sw+x]=1; }
   const lab=new Int32Array(sw*h); const comps=[]; const cbb=[]; const st=[];
   for(let p=0;p<sw*h;p++){ if(!mask[p]||lab[p]) continue; const id=comps.length+1; lab[p]=id; st.length=0; st.push(p); let a=0,bx0=1e9,bx1=-1,by0=1e9,by1=-1; while(st.length){ const c=st.pop(); a++; const cy=(c/sw)|0,cx=c%sw; if(cx<bx0)bx0=cx; if(cx>bx1)bx1=cx; if(cy<by0)by0=cy; if(cy>by1)by1=cy; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=cx+dx,ny=cy+dy; if(nx<0||ny<0||nx>=sw||ny>=h)continue; const ni=ny*sw+nx; if(mask[ni]&&!lab[ni]){lab[ni]=id; st.push(ni);} } } comps.push(a); cbb.push({minX:bx0,maxX:bx1,minY:by0,maxY:by1,a}); }
   let mainI=0; comps.forEach((a2,q)=>{ if(a2>comps[mainI]) mainI=q; }); const keepNear=task.keepNear===undefined?1e9:task.keepNear; const keepC=comps.map((a2,q)=>a2>=150 && (!task.dropEdgeSpill || q===mainI || !((i>0 && cbb[q].minX<=0) || (i<cuts.length-2 && cbb[q].maxX>=sw-1))) && (q===mainI || window.rectDist2(cbb[q],cbb[mainI])<=keepNear));
@@ -129,3 +130,11 @@ window.reencodeChar=async(k,q=0.88,minSave=0.3)=>{ const dir=CHAR_FOLDER[k]||k; 
 window.assetBudget=async()=>{ const rows=[]; for(const k of Object.keys(CHAR_ANIMS)){ const dir=CHAR_FOLDER[k]||k; let bytes=0,files=0;
   for(const [a,count] of Object.entries(CHAR_ANIMS[k])){ if(ANIM_ALIAS[k]&&ANIM_ALIAS[k][a]) continue; for(let i=0;i<count;i++){ try{ const r=await fetch(`/assets/characters/${dir}/${ANIM_FOLDER[a]}/${i}.webp`,{method:'HEAD',cache:'no-store'}); bytes+=+r.headers.get('content-length')||0; files++; }catch(e){} } }
   rows.push(`${k}: ${files} files ${(bytes/1048576).toFixed(1)} MB`); } return rows.join('\n'); };
+
+// Remove specks: keeps the largest connected piece of a cropped pose plus anything within `near` px
+// (bounding-box distance) of it; everything else (stray fragments from neighbouring poses) is cleared.
+window.cleanStrays = (cr, near) => { const W = cr.width, H = cr.height; const g = cr.getContext('2d'); const id = g.getImageData(0, 0, W, H); const A = id.data; const lab = new Int32Array(W * H); const comps = []; const st = [];
+  for (let p = 0; p < W * H; p++) { if (A[p * 4 + 3] <= 30 || lab[p]) continue; const cid = comps.length + 1; lab[p] = cid; st.length = 0; st.push(p); let a = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1; while (st.length) { const c = st.pop(); a++; const cy = (c / W) | 0, cx = c % W; if (cx < x0) x0 = cx; if (cx > x1) x1 = cx; if (cy < y0) y0 = cy; if (cy > y1) y1 = cy; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const ni = ny * W + nx; if (A[ni * 4 + 3] > 30 && !lab[ni]) { lab[ni] = cid; st.push(ni); } } } comps.push({ a, minX: x0, maxX: x1, minY: y0, maxY: y1 }); }
+  if (!comps.length) return 0; let m = 0; comps.forEach((c, i) => { if (c.a > comps[m].a) m = i; }); let removed = 0;
+  for (let p = 0; p < W * H; p++) { const l = lab[p]; if (!l) continue; if (l - 1 === m) continue; if (window.rectDist2(comps[l - 1], comps[m]) <= near) continue; A[p * 4 + 3] = 0; removed++; }
+  g.putImageData(id, 0, 0); return removed; };

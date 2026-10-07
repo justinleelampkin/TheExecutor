@@ -222,7 +222,7 @@ const STRIKE_FRAMES = {
 // Re-measure a character's row with _tools/measure_reach.js when its attack art changes;
 // characters/moves not listed fall back to the old fixed ranges.
 const ATTACK_REACH = {
-  seth:       { lightAtk: 36.5, heavyAtk: 53.6, crouchLightAtk: 63,   crouchHeavyAtk: 65.4, jumpLightAtk: 50.9, jumpHeavyAtk: 53.1 },
+  seth:       { lightAtk: 36.5, heavyAtk: 93.9, crouchLightAtk: 63,   crouchHeavyAtk: 65.4, jumpLightAtk: 50.9, jumpHeavyAtk: 53.1 },
   liberty:    { lightAtk: 54,   heavyAtk: 61,   crouchLightAtk: 46.8, crouchHeavyAtk: 71.9, jumpLightAtk: 61.2, jumpHeavyAtk: 70.9 },
   phi:        { lightAtk: 98.3, heavyAtk: 79.3, crouchLightAtk: 49.6, crouchHeavyAtk: 51.8, jumpLightAtk: 75.3, jumpHeavyAtk: 74.1 },
   botanist:   { lightAtk: 47.8, heavyAtk: 103.5, crouchLightAtk: 66.8, crouchHeavyAtk: 71.4, jumpLightAtk: 80.3, jumpHeavyAtk: 77.9 },

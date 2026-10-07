@@ -17,8 +17,16 @@ const CHARACTER_SELECT_MUSIC = null;
 // blip below). Same partial-roster-is-fine pattern as CHAR_MUSIC -- a character
 // with no line here just gets the generic confirm blip.
 const CHAR_SELECT_VOICE = {
-  seth: 'assets/audio/select-seth.mp3',
-  liberty: 'assets/audio/select-liberty.mp3',
+  // A character with several lines gets one picked at random each time they're selected --
+  // add another file to its list (or a new character) to widen the pool.
+  seth: ['assets/audio/select-seth.mp3'],
+  liberty: ['assets/audio/select-liberty.mp3', 'assets/audio/voices/liberty-1.mp3', 'assets/audio/voices/liberty-2.mp3'],
+  coyote: ['assets/audio/voices/coyote-1.mp3', 'assets/audio/voices/coyote-2.mp3'],
+  ladyvoix: [1, 2, 3, 4, 5, 6, 7].map(n => `assets/audio/voices/ladyvoix-${n}.mp3`),
+  botanist: [1, 2, 3, 4, 5, 6].map(n => `assets/audio/voices/botanist-${n}.mp3`),
+  phi: [1, 2, 3, 4, 5].map(n => `assets/audio/voices/phi-${n}.mp3`),
+  rainwalker: [1, 2, 3, 4, 5].map(n => `assets/audio/voices/rainwalker-${n}.mp3`),
+  echo: ['assets/audio/voices/echo-1.m4a'],
 };
 
 const bgMusic = new Audio();
@@ -139,10 +147,15 @@ function playMenuConfirmSound() {
 // select stalls on a pick until its voice line ends -- see input.js), or null when
 // this character has no line, so the caller knows there's nothing to wait for.
 function playCharacterSelectVoice(fighter) {
-  const src = CHAR_SELECT_VOICE[fighter.spriteKey];
-  if (!src) return null;
+  const lines = CHAR_SELECT_VOICE[fighter.spriteKey];
+  if (!lines || !lines.length) return null;
+  const src = lines[Math.floor(Math.random() * lines.length)];
   const sfx = new Audio(src);
   sfx.volume = SFX_VOLUME;
-  sfx.play().catch(() => {});
+  // if the file can't play (blocked autoplay, missing file, unsupported format) the select screen
+  // is waiting on this clip's 'ended' event -- fire it ourselves so the pick still goes through
+  const giveUp = () => sfx.dispatchEvent(new Event('ended'));
+  sfx.addEventListener('error', giveUp, { once: true });
+  sfx.play().catch(giveUp);
   return sfx;
 }
