@@ -859,7 +859,11 @@ class Fighter {
         const holdingBack = (this.facing === 1 && keys[c.left]) || (this.facing === -1 && keys[c.right]);
         if (!holdingBack) this.startState('idle');
       } else if (this.stateTimer >= this.stateDur) {
-        this.startState(this.state === 'knockdown' ? 'idle' : 'idle');
+        // a crouching attack that ends with down still held goes straight back to the crouch --
+        // going through 'idle' first showed one frame of the character standing up
+        const wasCrouchAtk = this.state === 'crouchLightAtk' || this.state === 'crouchHeavyAtk';
+        if (wasCrouchAtk && keys[c.down]) { this.startState('crouch'); this.vx = 0; } // crouchPhase/crouchFrame carry over untouched
+        else this.startState('idle');
       }
     }
 
