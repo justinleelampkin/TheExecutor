@@ -69,7 +69,7 @@ function drawHUD() {
 
   // name logos, under each player's meter bar -- driven by actual character, not fixed side
   const logoH = 34;
-  const logoFor = spriteKey => (ROSTER.find(r => r.key === spriteKey) || {}).nameLogoImg; // bosses have no logo yet (undefined is handled)
+  const logoFor = spriteKey => (bossRoster(spriteKey) || {}).nameLogoImg; // opponent-only characters without a logo yield undefined (handled below)
   const p1Logo = logoFor(p1.spriteKey);
   const p2Logo = logoFor(p2.spriteKey);
   if (p1Logo && p1Logo.complete && p1Logo.naturalWidth > 0) {

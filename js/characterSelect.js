@@ -169,7 +169,9 @@ function drawCharacterSelect() {
     const logoH = 60;
     const logoW = logoH * (nameLogo.width / nameLogo.height);
     const logoY = (canvas.height - baseSpriteH - 20) - logoH - 8;
-    ctx.drawImage(nameLogo, previewX - logoW / 2, logoY, logoW, logoH);
+    // keep wide logos fully on screen (the preview sits 90px from the edge, a 190px logo overhung it)
+    const logoX = Math.max(8, Math.min(canvas.width - 8 - logoW, previewX - logoW / 2));
+    ctx.drawImage(nameLogo, logoX, logoY, logoW, logoH);
   }
 
   ctx.font = '13px monospace';
@@ -230,6 +232,11 @@ function drawMatchLoading() {
 // select grid, so they live outside ROSTER (adding one there would also reshape the grid).
 // Story mode picks from here; `bossRoster(key)` finds an entry in either list.
 const BOSS_ROSTER = [
-  { key: 'yeats', name: 'WILLOW YEATS', color: '#e8e8e8', accent: '#2ecc71', unlocked: false, playable: false, opponentOk: true },
+  { key: 'yeats', name: 'WILLOW YEATS', color: '#e8e8e8', accent: '#2ecc71', unlocked: false, playable: false, opponentOk: true, nameLogoSrc: "assets/logos/yeats.webp" },
+  { key: 'skoll', name: 'SKOLL', color: '#e8e8e8', accent: '#d8232a', unlocked: false, playable: false, opponentOk: true, nameLogoSrc: "assets/logos/skoll.webp" },
 ];
+// opponent-only entries get the same lazy name-logo getter the playable roster has
+BOSS_ROSTER.forEach(r => {
+  if (r.nameLogoSrc) Object.defineProperty(r, "nameLogoImg", { get() { if (!this._logo) { this._logo = new Image(); this._logo.src = this.nameLogoSrc; } return this._logo; } });
+});
 function bossRoster(key) { return BOSS_ROSTER.find(b => b.key === key) || ROSTER.find(r => r.key === key); }

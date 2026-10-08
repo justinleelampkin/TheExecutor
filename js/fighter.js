@@ -50,6 +50,14 @@ const CHAR_ANIMS = {
   // Full moveset from user sheets (2026-10-03). jumpForward reuses the single jump sheet
   // (its 7th pose is a landing crouch the jump arc never reaches). Special is a
   // 2-row tornado/dust-wave sheet; victory is 2 rows with his dog joining in.
+  // Boss (opponent-only): Skoll, the ICE Captain -- white fur trench coat, white wolf-skull mask with
+  // glowing red eyes. jumpForward aliases jumpNeutral. Special is 16 frames from 4 source sheets.
+  skoll: {
+    walk: 7, idle: 5, crouch: 5, jumpNeutral: 7, jumpForward: 7,
+    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
+    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 16, knockdown: 4,
+    victory: 12, block: 4, hitstun: 4,
+  },
   // Boss (opponent-only, not on the select grid): Willow Yeats, Secretary of Cultural Harmony.
   // jumpForward aliases jumpNeutral. Special is a 6-frame green/gold mask-and-document storm.
   yeats: {
@@ -189,7 +197,7 @@ const SPECIAL_BOUNDARIES = {
 // out the windup/recovery the opponent gets to react to. See the matching `phi` branch
 // in attackHitbox() below, which has to track whatever this value is or the hitbox
 // window lands during the wrong pose.
-const SPECIAL_DUR = { seth: 72, liberty: 82, phi: 100, echo: 80 };
+const SPECIAL_DUR = { seth: 72, liberty: 82, phi: 100, echo: 80, skoll: 96 };
 
 // Normal-attack timing, in ticks (48/sec). SF2-style: a short startup, a window where
 // the hitbox is live and the extended pose is held, then a recovery that carries the
@@ -221,6 +229,7 @@ const STRIKE_FRAMES = {
   coyote:     { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [3, 3], crouchHeavyAtk: [4, 5] },
   echo:       { lightAtk: [2, 3], heavyAtk: [2, 3], crouchLightAtk: [2, 3], crouchHeavyAtk: [2, 3] },
   yeats:      { lightAtk: [3, 3], heavyAtk: [3, 3], crouchLightAtk: [2, 3], crouchHeavyAtk: [2, 3] },
+  skoll:      { lightAtk: [3, 3], heavyAtk: [2, 3], crouchLightAtk: [2, 3], crouchHeavyAtk: [3, 3] },
 };
 // How far each normal/jump attack's extended pose actually reaches, measured per move from
 // the sprite frames shown during its active ticks: forward distance from the character's
@@ -231,24 +240,25 @@ const STRIKE_FRAMES = {
 // Re-measure a character's row with _tools/measure_reach.js when its attack art changes;
 // characters/moves not listed fall back to the old fixed ranges.
 const ATTACK_REACH = {
-  seth:       { lightAtk: 36.5, heavyAtk: 93.9, crouchLightAtk: 63,   crouchHeavyAtk: 65.4, jumpLightAtk: 50.9, jumpHeavyAtk: 53.1 },
+  seth:       { lightAtk: 66.4, heavyAtk: 93.9, crouchLightAtk: 63,   crouchHeavyAtk: 65.4, jumpLightAtk: 50.9, jumpHeavyAtk: 53.1 },
   liberty:    { lightAtk: 54,   heavyAtk: 61,   crouchLightAtk: 46.8, crouchHeavyAtk: 71.9, jumpLightAtk: 61.2, jumpHeavyAtk: 70.9 },
-  phi:        { lightAtk: 98.3, heavyAtk: 79.3, crouchLightAtk: 49.6, crouchHeavyAtk: 51.8, jumpLightAtk: 75.3, jumpHeavyAtk: 74.1 },
-  botanist:   { lightAtk: 47.8, heavyAtk: 103.5, crouchLightAtk: 66.8, crouchHeavyAtk: 71.4, jumpLightAtk: 80.3, jumpHeavyAtk: 77.9 },
-  frontman:   { lightAtk: 51.7, heavyAtk: 52.5, crouchLightAtk: 62.3, crouchHeavyAtk: 62.3, jumpLightAtk: 52.3, jumpHeavyAtk: 58 },
-  ladyvoix:   { lightAtk: 60.4, heavyAtk: 86.4, crouchLightAtk: 88.1, crouchHeavyAtk: 69.8, jumpLightAtk: 118.8, jumpHeavyAtk: 125.3 },
-  rainwalker: { lightAtk: 63.6, heavyAtk: 69.6, crouchLightAtk: 56.5, crouchHeavyAtk: 54.4, jumpLightAtk: 41.2, jumpHeavyAtk: 42.8 },
-  architech:  { lightAtk: 55.1, heavyAtk: 60.2, crouchLightAtk: 60.6, crouchHeavyAtk: 59.6, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
-  coyote:     { lightAtk: 61.6, heavyAtk: 93.7, crouchLightAtk: 60.4, crouchHeavyAtk: 69.7, jumpLightAtk: 67.8, jumpHeavyAtk: 77.6 },
+  phi:        { lightAtk: 98.3, heavyAtk: 79.3, crouchLightAtk: 65.4, crouchHeavyAtk: 67.3, jumpLightAtk: 75.3, jumpHeavyAtk: 74.1 },
+  botanist:   { lightAtk: 66.9, heavyAtk: 103.5, crouchLightAtk: 66.8, crouchHeavyAtk: 71.4, jumpLightAtk: 80.3, jumpHeavyAtk: 77.9 },
+  frontman:   { lightAtk: 62.3, heavyAtk: 52.5, crouchLightAtk: 62.3, crouchHeavyAtk: 62.3, jumpLightAtk: 52.3, jumpHeavyAtk: 58 },
+  ladyvoix:   { lightAtk: 60.4, heavyAtk: 86.4, crouchLightAtk: 108.6, crouchHeavyAtk: 69.8, jumpLightAtk: 118.8, jumpHeavyAtk: 125.3 },
+  rainwalker: { lightAtk: 74.7, heavyAtk: 83.8, crouchLightAtk: 71,   crouchHeavyAtk: 54.4, jumpLightAtk: 41.2, jumpHeavyAtk: 42.8 },
+  architech:  { lightAtk: 65.5, heavyAtk: 73.3, crouchLightAtk: 73.7, crouchHeavyAtk: 73.4, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
+  coyote:     { lightAtk: 61.6, heavyAtk: 93.7, crouchLightAtk: 60.4, crouchHeavyAtk: 72.7, jumpLightAtk: 67.8, jumpHeavyAtk: 77.6 },
   echo:       { lightAtk: 63, heavyAtk: 79.7, crouchLightAtk: 61.6, crouchHeavyAtk: 96.2, jumpLightAtk: 75.9, jumpHeavyAtk: 57.5 },
-  yeats:      { lightAtk: 47, heavyAtk: 56, crouchLightAtk: 42, crouchHeavyAtk: 61, jumpLightAtk: 52, jumpHeavyAtk: 51 },
+  yeats:      { lightAtk: 50.7, heavyAtk: 65.8, crouchLightAtk: 42, crouchHeavyAtk: 74, jumpLightAtk: 57.2, jumpHeavyAtk: 48.8 },
+  skoll:      { lightAtk: 60.3, heavyAtk: 69.3, crouchLightAtk: 74.4, crouchHeavyAtk: 48.1, jumpLightAtk: 59.1, jumpHeavyAtk: 49.5 },
 };
 // Ticks each walk-cycle frame is held. Walk speed is a flat 3.2px/tick, but the sprites'
 // stride is far longer than 3.2px x a 5-tick frame covers, so the feet skated. This is
 // ~0.45 x the widest foot spread (measured per character at in-game scale) / 3.2 for the
 // cycle length, clamped to a lively 6.4-8 ticks/frame. Default 5 = the old cadence.
 const WALK_TICKS_PER_FRAME = {
-  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8, echo: 8, yeats: 8,
+  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8, echo: 8, yeats: 8, skoll: 8,
 };
 // Idle breathing: SF2 idles bob at roughly 8-10 ticks/frame; was 15.
 const IDLE_TICKS_PER_FRAME = 9;
@@ -260,6 +270,7 @@ const JUMP_ATTACK_Y = {
   botanist: { light: 0.39, heavy: 0.495 }, frontman: { light: 0.451, heavy: 0.435 }, ladyvoix: { light: 0.673, heavy: 0.697 },
   rainwalker: { light: 0.332, heavy: 0.251 }, coyote: { light: 0.58, heavy: 0.364 }, echo: { light: 0.493, heavy: 0.422 },
   yeats: { light: 0.336, heavy: 0.288 }, architech: { light: 0.38, heavy: 0.346 },
+  skoll: { light: 0.427, heavy: 0.3 },
 };
 // How long (ticks) a button press is remembered while the fighter cant act yet -- see update().
 const INPUT_BUFFER_TICKS = 5;
@@ -284,7 +295,7 @@ let SHOW_HITBOXES = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 // "everyone else" at ~0.65 -- that comparison only checked a couple of characters;
 // measuring the full roster shows the opposite. Tune per-character, not by
 // touching the art.
-const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04, echo: 1.04, yeats: 1.05 };
+const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04, echo: 1.04, yeats: 1.05, skoll: 1.18 };
 // Bumps every fighter's render size on a specific stage. Needed because a stage's front
 // layer has a hard floor on how small it can be drawn (it must still cover the canvas
 // width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
@@ -315,7 +326,7 @@ const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 // download) instead of keeping a duplicate folder: { charKey: { alias: target } }. Today that's
 // jump-forward == jump-neutral for everyone but the Botanist.
 const ANIM_ALIAS = {};
-['seth', 'liberty', 'phi', 'frontman', 'ladyvoix', 'rainwalker', 'architech', 'coyote', 'echo', 'yeats']
+['seth', 'liberty', 'phi', 'frontman', 'ladyvoix', 'rainwalker', 'architech', 'coyote', 'echo', 'yeats', 'skoll']
   .forEach(k => { ANIM_ALIAS[k] = { jumpForward: 'jumpNeutral' }; });
 
 // SPRITES[charKey][animName] = { frames, imgs, count, loaded, failed, started } for every
@@ -566,6 +577,34 @@ class Fighter {
         }
         return null;
       }
+      if (this.spriteKey === 'architech') {
+        // crystal beam: he builds a crystal shield (frames 3-4 of 6) then fires it as a beam that
+        // reaches ~290px from his centre on the strike frame (frame 5 = ticks 48-59 at 72 ticks).
+        // Stationary ranged hit, like the other blast specials.
+        if (this.stateTimer < 46 || this.stateTimer > 60) return null;
+        const range = 109 * s;
+        const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
+        return { x: hx, y: this.y - this.h*s*0.85, w: range, h: this.h*s*0.5, dmg: 20, kb: 20 };
+      }
+      if (this.spriteKey === 'skoll') {
+        // red-aura claw flurry (16 frames at 6 ticks/frame over SPECIAL_DUR.skoll=96): he rakes forward at
+        // frames 5-6, 8 and 10-11 (claw tips reach ~175px from his centre). Three separate hits; the last is
+        // the heavy one (long hit-stop via `last`). Stationary -- the lunge is in the art.
+        const windows = [
+          { start: 30, end: 41, id: 's1', dmg: 6, kb: 5, range: 115 },
+          { start: 48, end: 53, id: 's2', dmg: 6, kb: 6, range: 118 },
+          { start: 60, end: 71, id: 's3', dmg: 10, kb: 20, range: 120, last: true },
+        ];
+        for (const w of windows) {
+          if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
+            const range = w.range * s / 2.12; // tuned at skoll's stage scale (1.18 x 1.8)
+            const bodyW = this.w * s;
+            const x = this.facing === 1 ? this.x - bodyW/2 : this.x - bodyW/2 - range;
+            return { x, y: this.y - this.h*s*0.95, w: bodyW + range, h: this.h*s*0.85, dmg: w.dmg, kb: w.kb, hitId: w.id, last: !!w.last };
+          }
+        }
+        return null;
+      }
       if (this.spriteKey === 'echo') {
         // four-hit glitch combo: his ghost iterations rake in one after another (frames 2, 3-4
         // and 6 of his 10 at 8 ticks/frame), then the original lunges through with the vortex
@@ -611,8 +650,8 @@ class Fighter {
         // duration) -- same "the hit isn't coming from his own fists" logic as Lady
         // Voix's blast, so it gets the same stationary/extended-range treatment
         // instead of the generic body-width melee hitbox the other four still share.
-        if (this.stateTimer < 46 || this.stateTimer > 58) return null;
-        const range = 190 * s;
+        if (this.stateTimer < 47 || this.stateTimer > 59) return null;
+        const range = 86 * s; // the bear's snout reaches ~240px from his centre on its strike frame (re-measured after centring his body)
         const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
         return { x: hx, y: this.y - this.h*s*0.9, w: range, h: this.h*s*0.55, dmg: 20, kb: 20 };
       }
@@ -892,7 +931,7 @@ class Fighter {
         // the original lunges forward through the final strike (frames 5-7), ~100px
         const dashing = this.stateTimer >= 40 && this.stateTimer < 64;
         this.vx = dashing ? this.facing * 4.2 : 0;
-      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth' || this.spriteKey === 'coyote' || this.spriteKey === 'yeats') {
+      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth' || this.spriteKey === 'coyote' || this.spriteKey === 'yeats' || this.spriteKey === 'architech' || this.spriteKey === 'skoll') {
         // ranged specials (soundwave blast / water-bear summon / thrown vinyl disc /
         // charged energy blast) are stationary -- the hit reaches out on its own
         // rather than the character closing distance like a melee special
