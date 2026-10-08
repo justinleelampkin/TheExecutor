@@ -24,32 +24,30 @@ window.addEventListener('keydown', e => {
   }
   if (characterSelectActive) {
     if (csAwaitingVoice) return; // stalled on the just-confirmed pick's voice line -- see below
-    const ctrl = csPhase === 'p1' ? p1.controls : p2.controls;
+    // 2-player: P1 then P2 pick with their own keys. 1-player: the player's keys pick both their
+    // fighter ('p1') and then the CPU's opponent ('cpu').
+    const ctrl = csPhase === 'p2' ? p2.controls : p1.controls;
+    const list = csList();
     if (e.code === ctrl.left) { csCursor = csNextUnlocked(csCursor, -1); playMenuMoveSound(); }
     else if (e.code === ctrl.right) { csCursor = csNextUnlocked(csCursor, 1); playMenuMoveSound(); }
     else if (e.code === ctrl.light || e.code === ctrl.heavy) {
+      if (!csSelectable(list[csCursor])) return;
       playMenuConfirmSound();
       if (csPhase === 'p1') {
-        p1Choice = ROSTER[csCursor];
+        p1Choice = list[csCursor];
         applyRosterChoice(p1, p1Choice);
         loadCharacterSprites(p1Choice.key); // start downloading now, under the voice line
-        if (vsCPU) loadCharacterSprites((ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice).key);
         const voice = playCharacterSelectVoice(p1);
         const proceed = () => {
           csAwaitingVoice = false;
-          if (vsCPU) {
-            p2Choice = ROSTER.find(r => r.unlocked && r !== p1Choice) || p1Choice;
-            applyRosterChoice(p2, p2Choice);
-            startMatchWhenReady();
-          } else {
-            csPhase = 'p2';
-            csCursor = 0;
-          }
+          csPhase = vsCPU ? 'cpu' : 'p2';
+          csCursor = 0;
         };
         if (voice) { csAwaitingVoice = true; voice.addEventListener('ended', proceed, { once: true }); }
         else proceed();
       } else {
-        p2Choice = ROSTER[csCursor];
+        // 'p2' (2-player) or 'cpu' (the opponent the player chose for the CPU)
+        p2Choice = list[csCursor];
         applyRosterChoice(p2, p2Choice);
         loadCharacterSprites(p2Choice.key); // start downloading now, under the voice line
         const voice = playCharacterSelectVoice(p2);

@@ -152,10 +152,15 @@ function playCharacterSelectVoice(fighter) {
   const src = lines[Math.floor(Math.random() * lines.length)];
   const sfx = new Audio(src);
   sfx.volume = SFX_VOLUME;
-  // if the file can't play (blocked autoplay, missing file, unsupported format) the select screen
-  // is waiting on this clip's 'ended' event -- fire it ourselves so the pick still goes through
-  const giveUp = () => sfx.dispatchEvent(new Event('ended'));
-  sfx.addEventListener('error', giveUp, { once: true });
-  sfx.play().catch(giveUp);
+  // The select screen waits on this clip's 'ended' event, so make sure it always arrives: if the
+  // file can't play (blocked autoplay, missing file, unsupported format) fire it ourselves, and
+  // if playback simply never finishes (browsers cap simultaneous media elements, and a clip over
+  // the cap can hang without erroring) fire it after a hard 9s limit.
+  let done = false;
+  const finish = () => { if (done) return; done = true; clearTimeout(timer); sfx.dispatchEvent(new Event('ended')); };
+  const timer = setTimeout(finish, 9000);
+  sfx.addEventListener('ended', () => { done = true; clearTimeout(timer); }, { once: true });
+  sfx.addEventListener('error', finish, { once: true });
+  sfx.play().catch(finish);
   return sfx;
 }

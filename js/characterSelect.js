@@ -26,7 +26,7 @@ ROSTER.forEach(r => {
 });
 
 let characterSelectActive = false;
-let csPhase = 'p1'; // 'p1' | 'p2'
+let csPhase = 'p1'; // 'p1' | 'p2' (2-player) | 'cpu' (1-player: the player picks the CPU's opponent)
 let csCursor = 0;
 let p1Choice = null;
 let p2Choice = null;
@@ -39,11 +39,19 @@ let csPreviewTimer = 0;
 let csAwaitingVoice = false;
 let csPreviewFrame = 0;
 
+// What the cursor can move over on the current screen. Picking your own fighter (and 2-player)
+// shows only the playable roster; picking the CPU's opponent in 1-player mode also lists the
+// opponent-only characters (BOSS_ROSTER, defined at the bottom of this file).
+function csList() {
+  return csPhase === 'cpu' ? ROSTER.concat(BOSS_ROSTER) : ROSTER;
+}
+function csSelectable(r) { return r.unlocked || (csPhase === 'cpu' && r.opponentOk); }
 function csNextUnlocked(from, dir) {
+  const list = csList();
   let i = from;
-  for (let n = 0; n < ROSTER.length; n++) {
-    i = (i + dir + ROSTER.length) % ROSTER.length;
-    if (ROSTER[i].unlocked) return i;
+  for (let n = 0; n < list.length; n++) {
+    i = (i + dir + list.length) % list.length;
+    if (csSelectable(list[i])) return i;
   }
   return from;
 }
@@ -90,25 +98,35 @@ function drawCharacterSelect() {
   ctx.font = 'bold 24px monospace';
   ctx.fillStyle = '#fff';
   ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
-  ctx.fillText((csPhase === 'p1' ? 'PLAYER 1' : 'PLAYER 2') + ': CHOOSE YOUR FIGHTER', canvas.width / 2, 40);
+  const header = csPhase === 'cpu' ? 'CHOOSE YOUR OPPONENT' : (vsCPU ? 'CHOOSE YOUR FIGHTER' : (csPhase === 'p1' ? 'PLAYER 1' : 'PLAYER 2') + ': CHOOSE YOUR FIGHTER');
+  ctx.fillText(header, canvas.width / 2, 40);
   ctx.shadowBlur = 0;
 
-  // grid: 5 cols x 2 rows, centered
-  const cols = 5, rows = 2;
-  const tileW = 92, tileH = 130, gap = 8;
-  const gridW = cols * tileW + (cols - 1) * gap;
-  const gridH = rows * tileH + (rows - 1) * gap;
-  const gridX = (canvas.width - gridW) / 2;
-  const gridY = 70;
+  // grid: 5 columns, as many rows as the list needs (1-player opponent pick adds the bosses),
+  // each row centred so a short last row doesn't hug the left edge
+  const list = csList();
+  const cols = 5;
+  const rows = Math.ceil(list.length / cols);
+  const tileW = 92, tileH = rows > 2 ? 124 : 130, gap = 8;
+  const gridY = 66;
 
-  ROSTER.forEach((r, i) => {
+  list.forEach((r, i) => {
     const col = i % cols, row = Math.floor(i / cols);
-    const tx = gridX + col * (tileW + gap);
+    const inRow = Math.min(cols, list.length - row * cols);
+    const rowW = inRow * tileW + (inRow - 1) * gap;
+    const tx = (canvas.width - rowW) / 2 + col * (tileW + gap);
     const ty = gridY + row * (tileH + gap);
-    if (r.tileImg.complete && r.tileImg.naturalWidth > 0) {
+    if (r.tileImg && r.tileImg.complete && r.tileImg.naturalWidth > 0) {
       ctx.drawImage(r.tileImg, tx, ty, tileW, tileH);
+    } else if (!r.tileImg) {
+      // no portrait yet (opponent-only characters): a plain name card in their colours
+      ctx.fillStyle = '#16161c'; ctx.fillRect(tx, ty, tileW, tileH);
+      ctx.strokeStyle = r.accent || '#888'; ctx.lineWidth = 2; ctx.strokeRect(tx + 1, ty + 1, tileW - 2, tileH - 2); ctx.lineWidth = 1;
+      ctx.fillStyle = r.accent || '#ccc'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+      const words = r.name.split(' '); words.forEach((w, k) => ctx.fillText(w, tx + tileW / 2, ty + tileH / 2 + (k - (words.length - 1) / 2) * 16));
+      ctx.font = '9px monospace'; ctx.fillStyle = '#888'; ctx.fillText('BOSS', tx + tileW / 2, ty + tileH - 8);
     }
-    if (!r.unlocked) {
+    if (!csSelectable(r)) {
       ctx.fillStyle = 'rgba(10,10,14,0.72)';
       ctx.fillRect(tx, ty, tileW, tileH);
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
@@ -123,10 +141,10 @@ function drawCharacterSelect() {
   });
 
   // side preview: hovered character's idle animation + stylized name logo (above it, large)
-  const choice = ROSTER[csCursor];
+  const choice = list[csCursor];
   // preview art for whoever the cursor is on (idle only -- the full set loads on pick)
   loadCharacterSprites(choice.key, true);
-  const onLeft = csPhase === 'p1';
+  const onLeft = csPhase !== 'p2' && csPhase !== 'cpu'; // the CPU's opponent previews on the right, like player 2
   const previewX = onLeft ? 90 : canvas.width - 90;
   // Base preview height for every character; CHAR_HEIGHT_SCALE corrects it per-character
   // the same way drawSpriteFrame() does in-game, anchored to a fixed floor line so
@@ -146,7 +164,7 @@ function drawCharacterSelect() {
     ctx.drawImage(img, previewX - drawW / 2, floorY - previewSpriteH, drawW, previewSpriteH);
     ctx.restore();
   }
-  const nameLogo = choice.nameLogoImg;
+  const nameLogo = choice.nameLogoSrc ? choice.nameLogoImg : null; // opponent-only characters have no logo yet
   if (nameLogo && nameLogo.complete && nameLogo.naturalWidth > 0) {
     const logoH = 60;
     const logoW = logoH * (nameLogo.width / nameLogo.height);
@@ -157,7 +175,7 @@ function drawCharacterSelect() {
   ctx.font = '13px monospace';
   ctx.fillStyle = '#aaa';
   ctx.textAlign = 'center';
-  ctx.fillText('←/→ choose · confirm to lock in', canvas.width / 2, canvas.height - 8);
+  ctx.fillText('←/→ choose · confirm to lock in', canvas.width / 2, canvas.height - 6);
 }
 
 // Slightly slower than a real 60fps rAF cadence -- uniformly slows every tick-based
@@ -206,3 +224,12 @@ function drawMatchLoading() {
   });
   ctx.textAlign = 'left';
 }
+
+// ---------- Opponent-only characters ----------
+// Bosses / secret opponents: fully fightable (same Fighter + SPRITES machinery) but NOT on the
+// select grid, so they live outside ROSTER (adding one there would also reshape the grid).
+// Story mode picks from here; `bossRoster(key)` finds an entry in either list.
+const BOSS_ROSTER = [
+  { key: 'yeats', name: 'WILLOW YEATS', color: '#e8e8e8', accent: '#2ecc71', unlocked: false, playable: false, opponentOk: true },
+];
+function bossRoster(key) { return BOSS_ROSTER.find(b => b.key === key) || ROSTER.find(r => r.key === key); }

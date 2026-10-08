@@ -50,6 +50,14 @@ const CHAR_ANIMS = {
   // Full moveset from user sheets (2026-10-03). jumpForward reuses the single jump sheet
   // (its 7th pose is a landing crouch the jump arc never reaches). Special is a
   // 2-row tornado/dust-wave sheet; victory is 2 rows with his dog joining in.
+  // Boss (opponent-only, not on the select grid): Willow Yeats, Secretary of Cultural Harmony.
+  // jumpForward aliases jumpNeutral. Special is a 6-frame green/gold mask-and-document storm.
+  yeats: {
+    walk: 7, idle: 5, crouch: 5, jumpNeutral: 7, jumpForward: 7,
+    jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
+    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 6, knockdown: 4,
+    victory: 12, block: 4, hitstun: 4,
+  },
   // Full moveset. jumpForward aliases jumpNeutral; special is a 10-frame multi-hit (ghost clones).
   // Victory is a 16-frame dissolve into stars (4 source parts), defeat a collapse + dissolve.
   echo: {
@@ -84,7 +92,7 @@ const CHAR_ANIMS = {
     walk: 8, idle: 5, crouch: 3, lightAtk: 5, heavyAtk: 5,
     jumpNeutral: 6, jumpForward: 6,
     jumpLightAtk: 5, jumpHeavyAtk: 5, crouchLightAtk: 5, crouchHeavyAtk: 5,
-    special: 6, knockdown: 5, victory: 10, hitstun: 3, block: 3,
+    special: 9, knockdown: 5, victory: 10, hitstun: 3, block: 3,
   },
   // Full moveset. Voice/sound-themed attacks (light/heavy punches emit a sonic burst,
   // special is a mic-stand soundwave blast) fitting her "Lady Voix" name. jumpForward
@@ -119,7 +127,7 @@ const CHAR_ANIMS = {
   phi: {
     idle: 5, walk: 8, crouch: 3, jumpNeutral: 5, jumpForward: 5,
     jumpLightAtk: 5, jumpHeavyAtk: 5, lightAtk: 5, heavyAtk: 5,
-    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 7, knockdown: 5,
+    crouchLightAtk: 5, crouchHeavyAtk: 5, special: 9, knockdown: 5,
     victory: 8, victory2: 8, victory3: 8, victory4: 8, block: 4, hitstun: 4,
   },
   // Full moveset. jumpForward reuses the same single jump sheet as jumpNeutral, like
@@ -212,6 +220,7 @@ const STRIKE_FRAMES = {
   architech:  { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [2, 2], crouchHeavyAtk: [2, 3] },
   coyote:     { lightAtk: [3, 3], heavyAtk: [3, 4], crouchLightAtk: [3, 3], crouchHeavyAtk: [4, 5] },
   echo:       { lightAtk: [2, 3], heavyAtk: [2, 3], crouchLightAtk: [2, 3], crouchHeavyAtk: [2, 3] },
+  yeats:      { lightAtk: [3, 3], heavyAtk: [3, 3], crouchLightAtk: [2, 3], crouchHeavyAtk: [2, 3] },
 };
 // How far each normal/jump attack's extended pose actually reaches, measured per move from
 // the sprite frames shown during its active ticks: forward distance from the character's
@@ -232,13 +241,14 @@ const ATTACK_REACH = {
   architech:  { lightAtk: 55.1, heavyAtk: 60.2, crouchLightAtk: 60.6, crouchHeavyAtk: 59.6, jumpLightAtk: 51.9, jumpHeavyAtk: 50.5 },
   coyote:     { lightAtk: 61.6, heavyAtk: 93.7, crouchLightAtk: 60.4, crouchHeavyAtk: 69.7, jumpLightAtk: 67.8, jumpHeavyAtk: 77.6 },
   echo:       { lightAtk: 63, heavyAtk: 79.7, crouchLightAtk: 61.6, crouchHeavyAtk: 96.2, jumpLightAtk: 75.9, jumpHeavyAtk: 57.5 },
+  yeats:      { lightAtk: 47, heavyAtk: 56, crouchLightAtk: 42, crouchHeavyAtk: 61, jumpLightAtk: 52, jumpHeavyAtk: 51 },
 };
 // Ticks each walk-cycle frame is held. Walk speed is a flat 3.2px/tick, but the sprites'
 // stride is far longer than 3.2px x a 5-tick frame covers, so the feet skated. This is
 // ~0.45 x the widest foot spread (measured per character at in-game scale) / 3.2 for the
 // cycle length, clamped to a lively 6.4-8 ticks/frame. Default 5 = the old cadence.
 const WALK_TICKS_PER_FRAME = {
-  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8, echo: 8,
+  seth: 8, liberty: 8, botanist: 7.6, frontman: 6.5, ladyvoix: 6.4, phi: 7.9, rainwalker: 8, architech: 8, coyote: 8, echo: 8, yeats: 8,
 };
 // Idle breathing: SF2 idles bob at roughly 8-10 ticks/frame; was 15.
 const IDLE_TICKS_PER_FRAME = 9;
@@ -265,7 +275,7 @@ let SHOW_HITBOXES = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 // "everyone else" at ~0.65 -- that comparison only checked a couple of characters;
 // measuring the full roster shows the opposite. Tune per-character, not by
 // touching the art.
-const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04, echo: 1.04 };
+const CHAR_HEIGHT_SCALE = { ladyvoix: 0.73, phi: 0.767, seth: 1.163, rainwalker: 1.156, architech: 1.156, coyote: 1.04, echo: 1.04, yeats: 1.05 };
 // Bumps every fighter's render size on a specific stage. Needed because a stage's front
 // layer has a hard floor on how small it can be drawn (it must still cover the canvas
 // width -- see BAYOU_FRONT_SCALE's comment in stages.js), so shrinking the room alone
@@ -287,7 +297,7 @@ const STAGE_HEIGHT_SCALE = { bayou: 1.8, memorial: 1.8 };
 // Written by _tools repair runs; characters/anims not listed use 1.
 const ANIM_DRAW_SCALE = {
   ladyvoix: { jumpLightAtk: 1.0205, jumpHeavyAtk: 1.0062, heavyAtk: 1.0157, special: 1.1228, knockdown: 1.002 },
-  phi: { jumpLightAtk: 1.0568, jumpHeavyAtk: 1.1204, heavyAtk: 1.0076 },
+  phi: { jumpLightAtk: 1.0568, jumpHeavyAtk: 1.1204, heavyAtk: 1.0076, special: 1.25 },
 };
 const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 
@@ -295,7 +305,7 @@ const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 // download) instead of keeping a duplicate folder: { charKey: { alias: target } }. Today that's
 // jump-forward == jump-neutral for everyone but the Botanist.
 const ANIM_ALIAS = {};
-['seth', 'liberty', 'phi', 'frontman', 'ladyvoix', 'rainwalker', 'architech', 'coyote', 'echo']
+['seth', 'liberty', 'phi', 'frontman', 'ladyvoix', 'rainwalker', 'architech', 'coyote', 'echo', 'yeats']
   .forEach(k => { ANIM_ALIAS[k] = { jumpForward: 'jumpNeutral' }; });
 
 // SPRITES[charKey][animName] = { frames, imgs, count, loaded, failed, started } for every
@@ -480,8 +490,7 @@ class Fighter {
   // reaching 70px past the leading edge: with pushboxes fighters can no longer
   // interpenetrate, so a box exactly as wide as the body would only ever touch the
   // opponent's hurtbox edge-to-edge and whiff.
-  meleeSpecialBox(s, dmg, kb) {
-    const reach = 70;
+  meleeSpecialBox(s, dmg, kb, reach = 70) {
     const bodyW = this.w * s;
     const x = this.facing === 1 ? this.x - bodyW / 2 : this.x - bodyW / 2 - reach;
     return { x, y: this.y - this.h*s, w: bodyW + reach, h: this.h*s, dmg, kb };
@@ -527,6 +536,23 @@ class Fighter {
         }
         return null;
       }
+      if (this.spriteKey === 'yeats') {
+        // her special is a two-stage storm of documents/masks: a gold burst (frame 3 of 6) then
+        // the big green burst (frame 4), reaching ~135px past her body. Stationary; two hits.
+        const windows = [
+          { start: 24, end: 34, id: 'y1', dmg: 7, kb: 6 },
+          { start: 36, end: 48, id: 'y2', dmg: 13, kb: 18, last: true },
+        ];
+        for (const w of windows) {
+          if (this.stateTimer >= w.start && this.stateTimer <= w.end) {
+            const range = 72 * s;
+            const bodyW = this.w * s;
+            const x = this.facing === 1 ? this.x - bodyW/2 : this.x - bodyW/2 - range;
+            return { x, y: this.y - this.h*s*0.95, w: bodyW + range, h: this.h*s*0.9, dmg: w.dmg, kb: w.kb, hitId: w.id, last: !!w.last };
+          }
+        }
+        return null;
+      }
       if (this.spriteKey === 'echo') {
         // four-hit glitch combo: his ghost iterations rake in one after another (frames 2, 3-4
         // and 6 of his 10 at 8 ticks/frame), then the original lunges through with the vortex
@@ -549,12 +575,11 @@ class Fighter {
         return null;
       }
       if (this.spriteKey === 'phi') {
-        // his special plays out over SPECIAL_DUR.phi (100) rather than the shared
-        // default (72), so the tablet-smash impact -- frame 5 of his 7 (re-extracted
-        // from source, see CHAR_ANIMS.phi) -- lands around the ~71-84% mark, tick
-        // 71-84 here.
-        if (this.stateTimer < 71 || this.stateTimer > 84) return null;
-        return this.meleeSpecialBox(s, 20, 20);
+        // his special plays out over SPECIAL_DUR.phi (100) rather than the shared default (72);
+        // the tablet-smash impact is frame 8 of his 9 (see CHAR_ANIMS.phi) at ~11 ticks/frame,
+        // so ticks 78-90, with his dash (14 ticks) arriving right before it (see update()).
+        if (this.stateTimer < 78 || this.stateTimer > 90) return null;
+        return this.meleeSpecialBox(s, 20, 20, 170); // the tablet burst reaches ~235px from his centre
       }
       if (this.spriteKey === 'ladyvoix') {
         // stationary sound-wave blast -- projects outward from her mic stand in her
@@ -579,12 +604,11 @@ class Fighter {
         return { x: hx, y: this.y - this.h*s*0.9, w: range, h: this.h*s*0.55, dmg: 20, kb: 20 };
       }
       if (this.spriteKey === 'frontman') {
-        // throws a vinyl disc that visibly detaches and flies well away from his
-        // hand (frames 3-4 of 6 -- stateTimer ~36-59) rather than connecting with
-        // a punch, so like Lady Voix and Rainwalker's specials it's a stationary
-        // ranged hit, not the generic body-width melee hitbox.
-        if (this.stateTimer < 36 || this.stateTimer > 58) return null;
-        const range = 160 * s;
+        // throws a vinyl disc that detaches and flies well away from his hand (frames 5-8 of his
+        // 9 -- stateTimer ~34-60) rather than connecting with a punch, so like the other blast
+        // specials it is a stationary ranged hit, not the generic body-width melee hitbox.
+        if (this.stateTimer < 34 || this.stateTimer > 60) return null;
+        const range = 150 * s; // the disc peaks ~330px out on its flight frames (5-7 of his 9 at 8 ticks/frame)
         const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
         return { x: hx, y: this.y - this.h*s*0.85, w: range, h: this.h*s*0.45, dmg: 20, kb: 20 };
       }
@@ -851,7 +875,7 @@ class Fighter {
         // the original lunges forward through the final strike (frames 5-7), ~100px
         const dashing = this.stateTimer >= 40 && this.stateTimer < 64;
         this.vx = dashing ? this.facing * 4.2 : 0;
-      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth' || this.spriteKey === 'coyote') {
+      } else if (this.spriteKey === 'ladyvoix' || this.spriteKey === 'rainwalker' || this.spriteKey === 'frontman' || this.spriteKey === 'seth' || this.spriteKey === 'coyote' || this.spriteKey === 'yeats') {
         // ranged specials (soundwave blast / water-bear summon / thrown vinyl disc /
         // charged energy blast) are stationary -- the hit reaches out on its own
         // rather than the character closing distance like a melee special
@@ -863,7 +887,7 @@ class Fighter {
         // stretched out, keeping the default's absolute tick numbers meant he'd
         // finish dashing -- and stop dead, fully overshot -- tens of ticks before
         // the tablet-smash was even active, whiffing on anyone who hadn't chased him.
-        const dashing = this.stateTimer >= 57 && this.stateTimer < 71;
+        const dashing = this.stateTimer >= 64 && this.stateTimer < 78;
         this.vx = dashing ? this.facing * 14 : 0;
       } else {
         const dashing = this.stateTimer >= 26 && this.stateTimer < 40;
