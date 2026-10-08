@@ -252,6 +252,15 @@ const WALK_TICKS_PER_FRAME = {
 };
 // Idle breathing: SF2 idles bob at roughly 8-10 ticks/frame; was 15.
 const IDLE_TICKS_PER_FRAME = 9;
+// Height of each jump attack's striking limb, as a fraction of the base body height (this.h) above the
+// feet -- the jump-attack hitbox is centred here. Measured from the strike frames' rightmost columns
+// (2026-10-08 audit); re-measure when a character's jump-attack art changes.
+const JUMP_ATTACK_Y = {
+  seth: { light: 0.327, heavy: 0.451 }, liberty: { light: 0.615, heavy: 0.584 }, phi: { light: 0.835, heavy: 0.655 },
+  botanist: { light: 0.39, heavy: 0.495 }, frontman: { light: 0.451, heavy: 0.435 }, ladyvoix: { light: 0.673, heavy: 0.697 },
+  rainwalker: { light: 0.332, heavy: 0.251 }, coyote: { light: 0.58, heavy: 0.364 }, echo: { light: 0.493, heavy: 0.422 },
+  yeats: { light: 0.336, heavy: 0.288 }, architech: { light: 0.38, heavy: 0.346 },
+};
 // How long (ticks) a button press is remembered while the fighter cant act yet -- see update().
 const INPUT_BUFFER_TICKS = 5;
 // How far a directional jump travels, in body widths (this.w x displayScale): forward is
@@ -296,8 +305,9 @@ const STAGE_HEIGHT_SCALE = { bayou: 1.8, memorial: 1.8 };
 // when stretched to the standard draw height -- this multiplier (new/old) restores the body size.
 // Written by _tools repair runs; characters/anims not listed use 1.
 const ANIM_DRAW_SCALE = {
-  ladyvoix: { jumpLightAtk: 1.0205, jumpHeavyAtk: 1.0062, heavyAtk: 1.0157, special: 1.1228, knockdown: 1.002 },
-  phi: { jumpLightAtk: 1.0568, jumpHeavyAtk: 1.1204, heavyAtk: 1.0076, special: 1.25 },
+  ladyvoix: { jumpLightAtk: 1.0205, jumpHeavyAtk: 1.0062, heavyAtk: 1.0157, special: 1.1228, knockdown: 1.002, victory: 1.2562 },
+  phi: { jumpLightAtk: 1.0568, jumpHeavyAtk: 1.1204, heavyAtk: 1.0076, special: 1.25, victory: 1.6612, victory2: 1.6954, victory3: 1.6701, victory4: 1.72 },
+  rainwalker: { heavyAtk: 1.331 },
 };
 const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 
@@ -511,9 +521,12 @@ class Fighter {
       const isLight = this.airAttack === 'light'; // punch = weak
       const range = this.attackRange(isLight ? 'jumpLightAtk' : 'jumpHeavyAtk', isLight ? 60 : 78, s);
       const hx = this.facing === 1 ? this.x + (this.w*s)/2 : this.x - (this.w*s)/2 - range;
-      // P.H.I.'s jump punch throws his cannon arm higher than the shared 0.75 line
-      const top = (this.spriteKey === 'phi' && isLight) ? 0.87 : 0.75;
-      return { x: hx, y: this.y - this.h*s*top, w: range, h: this.h*s*0.4, dmg: isLight ? 7 : 12, kb: isLight ? 8 : 15 };
+      // Vertical placement follows where the striking limb actually is in this move's jump-attack frames
+      // (JUMP_ATTACK_Y, measured per character): the old shared "0.75 of a standing body" line floated above
+      // short, tucked jump poses (Rainwalker, Yeats, White Noise ...) so jump attacks whiffed from point-blank.
+      const yRatio = (JUMP_ATTACK_Y[this.spriteKey] && JUMP_ATTACK_Y[this.spriteKey][isLight ? 'light' : 'heavy']) || 0.5;
+      const boxH = this.h*s*0.45;
+      return { x: hx, y: this.y - this.h*s*yRatio - boxH/2, w: range, h: boxH, dmg: isLight ? 7 : 12, kb: isLight ? 8 : 15 };
     }
     if (this.state === 'special') {
       if (this.spriteKey === 'liberty') {
