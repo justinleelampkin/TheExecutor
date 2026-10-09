@@ -52,3 +52,12 @@ window.trimStrays = async (k, a, near = 40) => { const dir = CHAR_FOLDER[k] || k
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let l = 1e9, r = -1; for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 20) { if (x < l) l = x; if (x > r) r = x; }
     const w = r - l + 1 + 12; const nc = document.createElement('canvas'); nc.width = w; nc.height = c.height; nc.getContext('2d').drawImage(c, l - 6, 0); const blob = await new Promise(rr => nc.toBlob(rr, 'image/webp', 0.9)); await (await fetch('/save?path=' + path, { method: 'POST', body: await blob.arrayBuffer() })).text(); rep.push(`${im.width}->${w}${removed ? ' (-' + removed + 'px)' : ''}`); }
   return `${k}/${a} strays [${rep.join(' ')}]`; };
+
+// Contact sheet drawn the way the GAME draws frames: every canvas stretched to the character's draw height (x
+// ANIM_DRAW_SCALE), bottom-aligned on a yellow floor line, cyan line = idle's top. Use this (not contactChar)
+// when judging relative sizes. contactGame('skoll', ['idle','walk'], 'name', 230) -> _tools/name.png
+window.contactGame = async (k, defs, name, Hd = 240) => { const b64 = (s) => { const bin = atob(s.split(',')[1]); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; };
+  const dH = 180 * (CHAR_HEIGHT_SCALE[k] || 1) * 1.8; const f = Hd / (180 * 1.8); const c = document.createElement('canvas'); c.width = 2400; c.height = defs.length * (dH * f * 1.5 + 22) + 10; const g = c.getContext('2d'); g.fillStyle = '#4a5a6a'; g.fillRect(0, 0, c.width, c.height); let y = 0;
+  for (const a of defs) { const S = SPRITES[k][a]; const mult = (ANIM_DRAW_SCALE[k] && ANIM_DRAW_SCALE[k][a]) || 1; g.fillStyle = '#fff'; g.font = '12px monospace'; g.fillText(k + ' ' + a, 2, y + 12); y += 16; let x = 4; const base = y + dH * f * 1.45; g.strokeStyle = 'rgba(255,255,0,.5)'; g.beginPath(); g.moveTo(0, base); g.lineTo(c.width, base); g.stroke();
+    S.imgs.forEach((im) => { const h = dH * mult * f, w = im.naturalWidth / im.naturalHeight * h; if (x + w > c.width) return; g.drawImage(im, x, base - h, w, h); x += w + 8; }); y += dH * f * 1.45 + 6; }
+  await fetch('/save?path=_tools/' + name + '.png', { method: 'POST', body: b64(c.toDataURL('image/png')) }); return c.width + 'x' + c.height; };

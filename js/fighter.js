@@ -319,6 +319,7 @@ const ANIM_DRAW_SCALE = {
   ladyvoix: { jumpLightAtk: 1.0205, jumpHeavyAtk: 1.0062, heavyAtk: 1.0157, special: 1.1228, knockdown: 1.002, victory: 1.2562 },
   phi: { jumpLightAtk: 1.0568, jumpHeavyAtk: 1.1204, heavyAtk: 1.0076, special: 1.25, victory: 1.6612, victory2: 1.6954, victory3: 1.6701, victory4: 1.72 },
   rainwalker: { heavyAtk: 1.331 },
+  architech: { hitstun: 1.0083 },
 };
 const CROUCH_HOLD_AT = { phi: 1, liberty: 3 };
 
@@ -1043,7 +1044,9 @@ class Fighter {
   // True once every frame of the named animation has finished loading.
   animReady(name) {
     const a = this.anim(name);
-    return !!(a && a.loaded >= a.count);
+    // a frame that failed to download (404, flaky connection) must not leave the fighter drawn as a
+    // placeholder box forever: count it as done and let drawSpriteFrame() skip/borrow around it
+    return !!(a && a.loaded > 0 && a.loaded + (a.failed || 0) >= a.count);
   }
 
   // SIMPLE_STATE_ANIM entries can give `anim` as a plain string, or (for a state with
@@ -1054,6 +1057,7 @@ class Fighter {
   }
 
   drawSpriteFrame(ctx, img, animName) {
+if (!img || !img.naturalWidth) return; // frame not decoded (failed/evicted) -- skip rather than throw
     let drawH = 180 * (CHAR_HEIGHT_SCALE[this.spriteKey] || 1) * (STAGE_HEIGHT_SCALE[currentStage] || 1);
     // an animation re-exported with a taller canvas (to fit tall effects) keeps its body size via this
     const animMult = ANIM_DRAW_SCALE[this.spriteKey] && ANIM_DRAW_SCALE[this.spriteKey][animName];
@@ -1159,6 +1163,9 @@ class Fighter {
   }
 
   draw(ctx) {
+    // self-heal: if this fighter's art was released (sprite cache eviction) or never started, fetch it
+    // again instead of showing the placeholder box until the next character select
+    if (this.hasSprite && this.spriteKey && typeof characterSpritesReady === 'function' && !characterSpritesReady(this.spriteKey)) loadCharacterSprites(this.spriteKey);
     const crouch = this.state === 'crouch';
     const bodyH = crouch ? this.h * 0.6 : this.h;
     const topY = this.y - bodyH;
